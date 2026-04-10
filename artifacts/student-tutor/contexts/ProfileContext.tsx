@@ -62,6 +62,21 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const updated = { ...profile, voicePersonality: vp };
     setProfileState(updated);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    const baseUrl = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+    fetch(`${baseUrl}/api/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: updated.deviceId,
+        name: updated.name,
+        grade: updated.grade,
+        board: updated.board,
+        subjects: updated.subjects,
+        goal: updated.goal ?? null,
+        preferredLanguage: updated.preferredLanguage ?? "english",
+        voicePersonality: vp,
+      }),
+    }).catch(() => {});
   };
 
   return (

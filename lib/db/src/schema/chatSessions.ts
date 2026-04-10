@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,7 +16,7 @@ export const chatSessionsTable = pgTable("chat_sessions", {
 
 export const chatMessagesTable = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
-  sessionId: serial("session_id").notNull(),
+  sessionId: integer("session_id").notNull().references(() => chatSessionsTable.id, { onDelete: "cascade" }),
   role: text("role").notNull(),
   content: text("content").notNull(),
   imageUrl: text("image_url"),
