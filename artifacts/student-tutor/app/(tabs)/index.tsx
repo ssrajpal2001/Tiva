@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
   Platform, ActivityIndicator, Alert,
@@ -6,7 +6,6 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { useProfile } from "@/contexts/ProfileContext";
 
@@ -17,8 +16,6 @@ interface Session {
   title: string;
   updatedAt: string;
 }
-
-const SESSIONS_KEY = "chat_sessions_v1";
 
 const SUBJECT_COLORS: Record<string, string> = {
   math: "#4361ee",
@@ -41,12 +38,44 @@ const MODE_LABELS: Record<string, string> = {
   revision: "Revision",
 };
 
-const MODE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  ask: "chatbubble-ellipses",
-  homework: "document-text",
-  "exam-prep": "school",
-  revision: "refresh-circle",
-};
+function getBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_DOMAIN) {
+    return `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+  }
+  return "";
+}
+
+async function createServerSession(
+  deviceId: string,
+  subject: string,
+  mode: string,
+  grade: string,
+  board: string,
+): Promise<number | null> {
+  try {
+    const title = `${subject} - ${MODE_LABELS[mode] ?? mode}`;
+    const response = await fetch(`${getBaseUrl()}/api/tutor/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId, subject, mode, title, grade, board }),
+    });
+    if (!response.ok) return null;
+    const session = await response.json();
+    return session.id as number;
+  } catch {
+    return null;
+  }
+}
+
+async function loadServerSessions(deviceId: string): Promise<Session[]> {
+  try {
+    const response = await fetch(`${getBaseUrl()}/api/tutor/sessions?deviceId=${encodeURIComponent(deviceId)}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
 
 export default function ChatTab() {
   const colors = useColors();
@@ -54,38 +83,36 @@ export default function ChatTab() {
   const insets = useSafeAreaInsets();
   const { profile, loading } = useProfile();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [startingSession, setStartingSession] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(SESSIONS_KEY);
-        if (raw) setSessions(JSON.parse(raw));
-      } catch (_e) {}
-      setSessionsLoaded(true);
-    })();
-  }, []);
+  useEffect(() => {
+    if (profile?.deviceId) {
+      setSessionsLoading(true);
+      loadServerSessions(profile.deviceId).then((result) => {
+        setSessions(result);
+        setSessionsLoading(false);
+      });
+    }
+  }, [profile?.deviceId]);
 
-  const startNewSession = (subject: string, mode: string) => {
+  const startNewSession = async (subject: string, mode: string) => {
     if (!profile) {
       router.push("/onboarding");
       return;
     }
-    const sessionId = Date.now().toString() + Math.random().toString(36).substring(2, 5);
-    const newSession: Session = {
-      id: parseInt(sessionId.substring(0, 10)),
-      subject,
-      mode,
-      title: `${subject} - ${MODE_LABELS[mode] ?? mode}`,
-      updatedAt: new Date().toISOString(),
-    };
-    const updatedSessions = [newSession, ...sessions].slice(0, 20);
-    setSessions(updatedSessions);
-    AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updatedSessions)).catch(() => {});
+    const key = `${subject}:${mode}`;
+    setStartingSession(key);
+    const sessionId = await createServerSession(profile.deviceId, subject, mode, profile.grade, profile.board);
+    setStartingSession(null);
+    if (!sessionId) {
+      Alert.alert("Connection Error", "Could not connect to the tutor. Please try again.");
+      return;
+    }
     router.push({
       pathname: "/chat/[sessionId]",
       params: {
-        sessionId: sessionId,
+        sessionId: sessionId.toString(),
         subject,
         mode,
         grade: profile.grade,
@@ -95,9 +122,12 @@ export default function ChatTab() {
   };
 
   const deleteSession = async (id: number) => {
-    const updated = sessions.filter((s) => s.id !== id);
-    setSessions(updated);
-    await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated));
+    try {
+      await fetch(`${getBaseUrl()}/api/tutor/sessions/${id}`, { method: "DELETE" });
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } catch {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    }
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -157,34 +187,47 @@ export default function ChatTab() {
             <View style={styles.subjectsGrid}>
               {subjects.map((subject) => {
                 const color = SUBJECT_COLORS[subject.toLowerCase()] ?? colors.primary;
+                const key = `${subject}:ask`;
+                const isStarting = startingSession === key;
                 return (
                   <TouchableOpacity
                     key={subject}
-                    style={[styles.subjectCard, { backgroundColor: color + "18", borderColor: color + "40" }]}
+                    style={[styles.subjectCard, { backgroundColor: color + "18", borderColor: color + "40", opacity: isStarting ? 0.6 : 1 }]}
                     onPress={() => startNewSession(subject, "ask")}
                     activeOpacity={0.7}
+                    disabled={isStarting}
                   >
-                    <Ionicons name="chatbubble-ellipses" size={20} color={color} />
+                    {isStarting ? (
+                      <ActivityIndicator size="small" color={color} />
+                    ) : (
+                      <Ionicons name="chatbubble-ellipses" size={20} color={color} />
+                    )}
                     <Text style={[styles.subjectName, { color, fontFamily: "Inter_600SemiBold" }]}>{subject}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
 
-            {sessions.length > 0 && (
+            {sessionsLoading ? (
+              <View style={styles.sessionsLoadingRow}>
+                <ActivityIndicator size="small" color={colors.mutedForeground} />
+              </View>
+            ) : sessions.length > 0 ? (
               <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold", marginTop: 24 }]}>
                 Recent Chats
               </Text>
-            )}
+            ) : null}
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-              Start by tapping a subject above
-            </Text>
-          </View>
+          !sessionsLoading ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="chatbubbles-outline" size={40} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                Start by tapping a subject above
+              </Text>
+            </View>
+          ) : null
         }
         renderItem={({ item }) => {
           const color = SUBJECT_COLORS[item.subject.toLowerCase()] ?? colors.primary;
@@ -268,4 +311,5 @@ const styles = StyleSheet.create({
   deleteBtn: { padding: 4 },
   emptyState: { alignItems: "center", paddingTop: 32, gap: 8 },
   emptyText: { fontSize: 14, textAlign: "center" },
+  sessionsLoadingRow: { alignItems: "center", paddingTop: 20 },
 });

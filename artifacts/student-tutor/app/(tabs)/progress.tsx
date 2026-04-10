@@ -97,7 +97,7 @@ export default function ProgressTab() {
           </View>
 
           <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-            <View style={[styles.progressFill, { width: `${xpProgress}%` as any, backgroundColor: colors.primary }]} />
+            <View style={[styles.progressFill, { width: `${xpProgress}%` as `${number}%`, backgroundColor: colors.primary }]} />
           </View>
         </View>
 
@@ -109,7 +109,7 @@ export default function ProgressTab() {
             {progress.subjectBreakdown.map((sb) => {
               const icon = SUBJECT_ICONS[sb.subject.toLowerCase()] ?? "book";
               const maxXp = Math.max(...progress.subjectBreakdown.map((s) => s.xp), 1);
-              const barWidth = `${Math.round((sb.xp / maxXp) * 100)}%`;
+              const barPercent: `${number}%` = `${Math.round((sb.xp / maxXp) * 100)}%`;
               return (
                 <View key={sb.subject} style={styles.subjectRow}>
                   <View style={styles.subjectIcon}>
@@ -125,7 +125,7 @@ export default function ProgressTab() {
                       </Text>
                     </View>
                     <View style={[styles.subjectTrack, { backgroundColor: colors.border }]}>
-                      <View style={[styles.subjectFill, { width: barWidth as any, backgroundColor: colors.primary + "cc" }]} />
+                      <View style={[styles.subjectFill, { width: barPercent, backgroundColor: colors.primary + "cc" }]} />
                     </View>
                   </View>
                 </View>

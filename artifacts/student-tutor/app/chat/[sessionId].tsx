@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   FlatList, Platform, ActivityIndicator, Alert, Image,
@@ -19,7 +19,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   imageUri?: string;
-  timestamp: Date;
+  timestamp: string;
 }
 
 const MODE_LABELS: Record<string, string> = {
@@ -35,6 +35,10 @@ const MODE_COLORS: Record<string, string> = {
   "exam-prep": "#f72585",
   revision: "#f77f00",
 };
+
+function getBaseUrl(): string {
+  return process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+}
 
 function TypingIndicator({ color }: { color: string }) {
   return (
@@ -72,18 +76,39 @@ export default function ChatScreen() {
   const { sessionId, subject, mode, grade, board } = params;
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   const modeColor = MODE_COLORS[mode ?? "ask"] ?? colors.primary;
   const modeLabel = MODE_LABELS[mode ?? "ask"] ?? "Ask";
 
-  const baseUrl = process.env.EXPO_PUBLIC_DOMAIN
-    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-    : "";
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (!sessionId) { setHistoryLoading(false); return; }
+      try {
+        const response = await fetch(`${getBaseUrl()}/api/tutor/sessions/${sessionId}`);
+        if (response.ok) {
+          const data = await response.json();
+          const serverMessages: Message[] = (data.messages ?? []).map(
+            (m: { id: number; role: string; content: string; createdAt: string }) => ({
+              id: m.id.toString(),
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              timestamp: m.createdAt,
+            })
+          );
+          setMessages(serverMessages.reverse());
+        }
+      } catch {
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+    loadHistory();
+  }, [sessionId]);
 
   const sendMessage = useCallback(async (content: string, imageBase64?: string) => {
     if (!content.trim() && !imageBase64) return;
@@ -92,14 +117,12 @@ export default function ChatScreen() {
     const userMessage: Message = {
       id: Date.now().toString() + "u",
       role: "user",
-      content: imageBase64 ? content || "[Image question sent]" : content,
-      imageUri: selectedImage ?? undefined,
-      timestamp: new Date(),
+      content: imageBase64 ? (content || "[Image question sent]") : content,
+      timestamp: new Date().toISOString(),
     };
 
     setMessages((prev) => [userMessage, ...prev]);
     setInput("");
-    setSelectedImage(null);
     setIsSending(true);
     setStreamingContent("");
 
@@ -107,8 +130,8 @@ export default function ChatScreen() {
 
     try {
       const endpoint = imageBase64
-        ? `${baseUrl}/api/tutor/sessions/${sessionId}/image-messages`
-        : `${baseUrl}/api/tutor/sessions/${sessionId}/messages`;
+        ? `${getBaseUrl()}/api/tutor/sessions/${sessionId}/image-messages`
+        : `${getBaseUrl()}/api/tutor/sessions/${sessionId}/messages`;
 
       const body = imageBase64
         ? { imageBase64, grade, board, subject, mode, deviceId: profile?.deviceId ?? "" }
@@ -121,7 +144,7 @@ export default function ChatScreen() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error("Failed to get response");
+        throw new Error(`Server error: ${response.status}`);
       }
 
       const reader = response.body.getReader();
@@ -138,7 +161,7 @@ export default function ChatScreen() {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(line.slice(6)) as { content?: string; done?: boolean };
               if (data.content) {
                 accumulated += data.content;
                 setStreamingContent(accumulated);
@@ -148,30 +171,32 @@ export default function ChatScreen() {
                   id: Date.now().toString() + "a",
                   role: "assistant",
                   content: accumulated,
-                  timestamp: new Date(),
+                  timestamp: new Date().toISOString(),
                 };
                 setMessages((prev) => [assistantMessage, ...prev]);
                 setStreamingContent("");
                 awardXp(10, subject ?? "General");
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
-            } catch (_e) {}
+            } catch {
+            }
           }
         }
       }
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
       const errMessage: Message = {
         id: Date.now().toString() + "e",
         role: "assistant",
-        content: "I had trouble connecting. Please check your internet and try again.",
-        timestamp: new Date(),
+        content: `I had trouble connecting. ${errMsg}. Please try again.`,
+        timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [errMessage, ...prev]);
     } finally {
       setIsSending(false);
       setStreamingContent("");
     }
-  }, [isSending, selectedImage, baseUrl, sessionId, grade, board, subject, mode, profile, awardXp]);
+  }, [isSending, sessionId, grade, board, subject, mode, profile, awardXp]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -186,9 +211,8 @@ export default function ChatScreen() {
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      setSelectedImage(asset.uri);
       if (asset.base64) {
-        await sendMessage("[Scanned question from image]", asset.base64);
+        await sendMessage("", asset.base64);
       }
     }
   };
@@ -206,14 +230,12 @@ export default function ChatScreen() {
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      setSelectedImage(asset.uri);
       if (asset.base64) {
-        await sendMessage("[Scanned question from camera]", asset.base64);
+        await sendMessage("", asset.base64);
       }
     }
   };
 
-  const headerHeight = 60;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -290,73 +312,81 @@ export default function ChatScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {messages.length === 0 && !isSending && (
-        <View style={styles.emptyState}>
-          <View style={[styles.emptyIcon, { backgroundColor: modeColor + "20" }]}>
-            <Ionicons name="sparkles" size={32} color={modeColor} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-            {grade} · {board} · {subject}
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-            Ask your question or upload a photo of your textbook
-          </Text>
+      {historyLoading ? (
+        <View style={styles.historyLoading}>
+          <ActivityIndicator color={colors.primary} />
         </View>
-      )}
+      ) : (
+        <>
+          {messages.length === 0 && !isSending && (
+            <View style={styles.emptyState}>
+              <View style={[styles.emptyIcon, { backgroundColor: modeColor + "20" }]}>
+                <Ionicons name="sparkles" size={32} color={modeColor} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+                {grade} · {board} · {subject}
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                Ask your question or upload a photo of your textbook
+              </Text>
+            </View>
+          )}
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-        keyboardVerticalOffset={0}
-      >
-        <FlatList
-          data={messages}
-          keyExtractor={(item) => item.id}
-          inverted
-          renderItem={renderMessage}
-          contentContainerStyle={[
-            styles.messageList,
-            { paddingBottom: 16, paddingTop: 16 },
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          scrollEnabled={messages.length > 0}
-          ListHeaderComponent={streamingMessage}
-        />
-
-        <View style={[styles.inputContainer, { paddingBottom: bottomPad + 8, borderTopColor: colors.border, backgroundColor: colors.background }]}>
-          <TouchableOpacity style={styles.imageBtn} onPress={takePhoto} testID="camera-btn">
-            <Ionicons name="camera" size={22} color={colors.mutedForeground} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.imageBtn} onPress={pickImage} testID="gallery-btn">
-            <Ionicons name="image" size={22} color={colors.mutedForeground} />
-          </TouchableOpacity>
-          <TextInput
-            ref={inputRef}
-            style={[styles.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border, fontFamily: "Inter_400Regular" }]}
-            placeholder="Ask your question..."
-            placeholderTextColor={colors.mutedForeground}
-            value={input}
-            onChangeText={setInput}
-            multiline
-            maxLength={1000}
-            testID="message-input"
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: input.trim() ? colors.primary : colors.border }]}
-            onPress={() => sendMessage(input)}
-            disabled={!input.trim() || isSending}
-            testID="send-btn"
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior="padding"
+            keyboardVerticalOffset={0}
           >
-            {isSending ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Ionicons name="send" size={18} color={input.trim() ? "#fff" : colors.mutedForeground} />
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+            <FlatList
+              data={messages}
+              keyExtractor={(item) => item.id}
+              inverted
+              renderItem={renderMessage}
+              contentContainerStyle={[
+                styles.messageList,
+                { paddingBottom: 16, paddingTop: 16 },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              scrollEnabled={messages.length > 0}
+              ListHeaderComponent={streamingMessage}
+            />
+
+            <View style={[styles.inputContainer, { paddingBottom: bottomPad + 8, borderTopColor: colors.border, backgroundColor: colors.background }]}>
+              <TouchableOpacity style={styles.imageBtn} onPress={takePhoto} testID="camera-btn">
+                <Ionicons name="camera" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imageBtn} onPress={pickImage} testID="gallery-btn">
+                <Ionicons name="image" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              <TextInput
+                ref={inputRef}
+                style={[styles.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border, fontFamily: "Inter_400Regular" }]}
+                placeholder="Ask your question..."
+                placeholderTextColor={colors.mutedForeground}
+                value={input}
+                onChangeText={setInput}
+                multiline
+                maxLength={1000}
+                testID="message-input"
+              />
+              <TouchableOpacity
+                style={[styles.sendBtn, { backgroundColor: input.trim() ? colors.primary : colors.border }]}
+                onPress={() => sendMessage(input)}
+                disabled={!input.trim() || isSending}
+                testID="send-btn"
+              >
+                {isSending ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name="send" size={18} color={input.trim() ? "#fff" : colors.mutedForeground} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </>
+      )}
     </View>
   );
 }
@@ -372,6 +402,7 @@ const styles = StyleSheet.create({
   subjectLabel: { fontSize: 16 },
   modeTag: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   modeTagText: { fontSize: 12 },
+  historyLoading: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyState: {
     position: "absolute", left: 0, right: 0, top: "35%",
     alignItems: "center", paddingHorizontal: 40, gap: 12, zIndex: -1,
