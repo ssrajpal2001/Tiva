@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { chatSessionsTable, chatMessagesTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router = Router();
@@ -83,6 +83,13 @@ STRICT RULES:
 You are their personal tutor — smart, patient, and always on their side.`;
 }
 
+async function verifySessionOwner(sessionId: number, deviceId: string) {
+  const [session] = await db.select()
+    .from(chatSessionsTable)
+    .where(and(eq(chatSessionsTable.id, sessionId), eq(chatSessionsTable.deviceId, deviceId)));
+  return session ?? null;
+}
+
 router.get("/tutor/sessions", async (req, res) => {
   const deviceId = req.query["deviceId"] as string;
   if (!deviceId) {
@@ -109,11 +116,19 @@ router.post("/tutor/sessions", async (req, res) => {
 
 router.get("/tutor/sessions/:id", async (req, res) => {
   const id = parseInt(req.params["id"] ?? "0");
+  const deviceId = req.query["deviceId"] as string | undefined;
+
   const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id));
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
   }
+
+  if (deviceId && session.deviceId !== deviceId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
   const messages = await db.select().from(chatMessagesTable)
     .where(eq(chatMessagesTable.sessionId, id))
     .orderBy(chatMessagesTable.createdAt);
@@ -122,6 +137,19 @@ router.get("/tutor/sessions/:id", async (req, res) => {
 
 router.delete("/tutor/sessions/:id", async (req, res) => {
   const id = parseInt(req.params["id"] ?? "0");
+  const deviceId = (req.query["deviceId"] ?? req.body?.deviceId) as string | undefined;
+
+  if (!deviceId) {
+    res.status(400).json({ error: "deviceId required" });
+    return;
+  }
+
+  const session = await verifySessionOwner(id, deviceId);
+  if (!session) {
+    res.status(404).json({ error: "Session not found or access denied" });
+    return;
+  }
+
   await db.delete(chatMessagesTable).where(eq(chatMessagesTable.sessionId, id));
   await db.delete(chatSessionsTable).where(eq(chatSessionsTable.id, id));
   res.status(204).end();
@@ -131,14 +159,14 @@ router.post("/tutor/sessions/:id/messages", async (req, res) => {
   const id = parseInt(req.params["id"] ?? "0");
   const { content, deviceId, grade, board, subject, mode } = req.body;
 
-  if (!content || !grade || !board || !subject || !mode) {
+  if (!content || !grade || !board || !subject || !mode || !deviceId) {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
 
-  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id));
+  const session = await verifySessionOwner(id, deviceId);
   if (!session) {
-    res.status(404).json({ error: "Session not found" });
+    res.status(404).json({ error: "Session not found or access denied" });
     return;
   }
 
@@ -185,21 +213,20 @@ router.post("/tutor/sessions/:id/messages", async (req, res) => {
 
 router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
   const id = parseInt(req.params["id"] ?? "0");
-  const { imageBase64, grade, board, subject, mode } = req.body;
+  const { imageBase64, grade, board, subject, mode, deviceId } = req.body;
 
-  if (!imageBase64 || !grade || !board || !subject || !mode) {
+  if (!imageBase64 || !grade || !board || !subject || !mode || !deviceId) {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
 
-  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id));
+  const session = await verifySessionOwner(id, deviceId);
   if (!session) {
-    res.status(404).json({ error: "Session not found" });
+    res.status(404).json({ error: "Session not found or access denied" });
     return;
   }
 
   const systemPrompt = buildSystemPrompt(subject, grade, board, mode);
-
   const imageUrl = `data:image/jpeg;base64,${imageBase64}`;
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -209,7 +236,7 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
   let fullResponse = "";
   let extractedQuestion = "";
 
-  const stream = await openai.chat.completions.create({
+  const extractionStream = await openai.chat.completions.create({
     model: "gpt-5.2",
     max_completion_tokens: 8192,
     messages: [
@@ -217,13 +244,11 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
       {
         role: "user",
         content: [
-          {
-            type: "image_url",
-            image_url: { url: imageUrl },
-          },
+          { type: "image_url", image_url: { url: imageUrl } },
           {
             type: "text",
-            text: "Please first identify and state the question from this image, then provide a complete solution/explanation as my tutor.",
+            text: `First, on a single line starting with "QUESTION: ", write out the exact question or problem visible in the image.
+Then provide a complete step-by-step solution as my ${subject} tutor for a ${board} ${grade} student.`,
           },
         ],
       },
@@ -231,7 +256,7 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
     stream: true,
   });
 
-  for await (const chunk of stream) {
+  for await (const chunk of extractionStream) {
     const chunkContent = chunk.choices[0]?.delta?.content;
     if (chunkContent) {
       fullResponse += chunkContent;
@@ -239,12 +264,14 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
     }
   }
 
-  extractedQuestion = `[Image question in ${subject}]`;
-  await db.insert(chatMessagesTable).values({ sessionId: id, role: "user", content: extractedQuestion });
+  const questionMatch = fullResponse.match(/^QUESTION:\s*(.+)/m);
+  extractedQuestion = questionMatch?.[1]?.trim() ?? `[Image question in ${subject}]`;
+
+  await db.insert(chatMessagesTable).values({ sessionId: id, role: "user", content: `[Image] ${extractedQuestion}` });
   await db.insert(chatMessagesTable).values({ sessionId: id, role: "assistant", content: fullResponse });
   await db.update(chatSessionsTable).set({ updatedAt: new Date() }).where(eq(chatSessionsTable.id, id));
 
-  res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  res.write(`data: ${JSON.stringify({ done: true, extractedQuestion })}\n\n`);
   res.end();
 });
 

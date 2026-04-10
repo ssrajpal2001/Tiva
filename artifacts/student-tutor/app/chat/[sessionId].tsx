@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as Speech from "expo-speech";
 import { fetch } from "expo/fetch";
 import { useColors } from "@/hooks/useColors";
 import { useProfile } from "@/contexts/ProfileContext";
@@ -34,6 +35,18 @@ const MODE_COLORS: Record<string, string> = {
   homework: "#7209b7",
   "exam-prep": "#f72585",
   revision: "#f77f00",
+};
+
+const VOICE_PITCH: Record<string, number> = {
+  friendly: 1.1,
+  strict: 0.9,
+  motivational: 1.2,
+};
+
+const VOICE_RATE: Record<string, number> = {
+  friendly: 0.9,
+  strict: 0.85,
+  motivational: 1.0,
 };
 
 function getBaseUrl(): string {
@@ -80,16 +93,19 @@ export default function ChatScreen() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   const modeColor = MODE_COLORS[mode ?? "ask"] ?? colors.primary;
   const modeLabel = MODE_LABELS[mode ?? "ask"] ?? "Ask";
+  const voicePersonality = profile?.voicePersonality ?? "friendly";
 
   useEffect(() => {
     const loadHistory = async () => {
       if (!sessionId) { setHistoryLoading(false); return; }
       try {
-        const response = await fetch(`${getBaseUrl()}/api/tutor/sessions/${sessionId}`);
+        const deviceIdParam = profile?.deviceId ? `?deviceId=${encodeURIComponent(profile.deviceId)}` : "";
+        const response = await fetch(`${getBaseUrl()}/api/tutor/sessions/${sessionId}${deviceIdParam}`);
         if (response.ok) {
           const data = await response.json();
           const serverMessages: Message[] = (data.messages ?? []).map(
@@ -108,7 +124,48 @@ export default function ChatScreen() {
       }
     };
     loadHistory();
-  }, [sessionId]);
+  }, [sessionId, profile?.deviceId]);
+
+  const speakText = useCallback(async (text: string) => {
+    if (Platform.OS === "web") return;
+    try {
+      const isSpeechAvailable = await Speech.isSpeakingAsync();
+      if (isSpeechAvailable) {
+        await Speech.stop();
+      }
+      const cleanText = text.replace(/[*#_`]/g, "").substring(0, 500);
+      setIsSpeaking(true);
+      Speech.speak(cleanText, {
+        language: "en-IN",
+        pitch: VOICE_PITCH[voicePersonality] ?? 1.0,
+        rate: VOICE_RATE[voicePersonality] ?? 0.9,
+        onDone: () => setIsSpeaking(false),
+        onError: () => setIsSpeaking(false),
+      });
+    } catch {
+      setIsSpeaking(false);
+    }
+  }, [voicePersonality]);
+
+  const stopSpeaking = useCallback(async () => {
+    try {
+      await Speech.stop();
+      setIsSpeaking(false);
+    } catch {}
+  }, []);
+
+  const awardXpWithBackend = useCallback(async (xpAmount: number, subjectName: string) => {
+    awardXp(xpAmount, subjectName);
+    if (!profile?.deviceId) return;
+    try {
+      await fetch(`${getBaseUrl()}/api/progress/${encodeURIComponent(profile.deviceId)}/xp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ xp: xpAmount, subject: subjectName, reason: "chat_message" }),
+      });
+    } catch {
+    }
+  }, [awardXp, profile?.deviceId]);
 
   const sendMessage = useCallback(async (content: string, imageBase64?: string) => {
     if (!content.trim() && !imageBase64) return;
@@ -117,7 +174,7 @@ export default function ChatScreen() {
     const userMessage: Message = {
       id: Date.now().toString() + "u",
       role: "user",
-      content: imageBase64 ? (content || "[Image question sent]") : content,
+      content: imageBase64 ? (content || "[Scanning image question...]") : content,
       timestamp: new Date().toISOString(),
     };
 
@@ -150,6 +207,7 @@ export default function ChatScreen() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
+      let extractedQ: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -161,12 +219,26 @@ export default function ChatScreen() {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             try {
-              const data = JSON.parse(line.slice(6)) as { content?: string; done?: boolean };
+              const data = JSON.parse(line.slice(6)) as { content?: string; done?: boolean; extractedQuestion?: string };
               if (data.content) {
                 accumulated += data.content;
                 setStreamingContent(accumulated);
               }
               if (data.done) {
+                if (data.extractedQuestion) {
+                  extractedQ = data.extractedQuestion;
+                  setMessages((prev) => {
+                    const updated = [...prev];
+                    const firstUserIdx = updated.findIndex((m) => m.role === "user");
+                    if (firstUserIdx >= 0 && updated[firstUserIdx]) {
+                      updated[firstUserIdx] = {
+                        ...updated[firstUserIdx]!,
+                        content: `[Image] ${data.extractedQuestion}`,
+                      };
+                    }
+                    return updated;
+                  });
+                }
                 const assistantMessage: Message = {
                   id: Date.now().toString() + "a",
                   role: "assistant",
@@ -175,20 +247,22 @@ export default function ChatScreen() {
                 };
                 setMessages((prev) => [assistantMessage, ...prev]);
                 setStreamingContent("");
-                awardXp(10, subject ?? "General");
+                await awardXpWithBackend(10, subject ?? "General");
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                speakText(accumulated);
               }
             } catch {
             }
           }
         }
       }
+      void extractedQ;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
       const errMessage: Message = {
         id: Date.now().toString() + "e",
         role: "assistant",
-        content: `I had trouble connecting. ${errMsg}. Please try again.`,
+        content: `I had trouble connecting. ${errMsg}. Please check your connection and try again.`,
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [errMessage, ...prev]);
@@ -196,7 +270,7 @@ export default function ChatScreen() {
       setIsSending(false);
       setStreamingContent("");
     }
-  }, [isSending, sessionId, grade, board, subject, mode, profile, awardXp]);
+  }, [isSending, sessionId, grade, board, subject, mode, profile, awardXpWithBackend, speakText]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -209,11 +283,8 @@ export default function ChatScreen() {
       quality: 0.8,
       base64: true,
     });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      if (asset.base64) {
-        await sendMessage("", asset.base64);
-      }
+    if (!result.canceled && result.assets[0]?.base64) {
+      await sendMessage("", result.assets[0].base64);
     }
   };
 
@@ -228,11 +299,8 @@ export default function ChatScreen() {
       quality: 0.8,
       base64: true,
     });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      if (asset.base64) {
-        await sendMessage("", asset.base64);
-      }
+    if (!result.canceled && result.assets[0]?.base64) {
+      await sendMessage("", result.assets[0].base64);
     }
   };
 
@@ -248,13 +316,15 @@ export default function ChatScreen() {
             <Ionicons name="sparkles" size={12} color="#fff" />
           </View>
         )}
-        <View
+        <TouchableOpacity
           style={[
             styles.bubble,
             isUser
               ? [styles.userBubble, { backgroundColor: colors.primary }]
               : [styles.assistantBubble, { backgroundColor: colors.card, borderColor: colors.border }],
           ]}
+          onLongPress={() => !isUser && speakText(item.content)}
+          activeOpacity={0.95}
         >
           {item.imageUri && (
             <Image source={{ uri: item.imageUri }} style={styles.messageImage} resizeMode="cover" />
@@ -270,7 +340,7 @@ export default function ChatScreen() {
           >
             {item.content}
           </Text>
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -298,7 +368,7 @@ export default function ChatScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.chatHeader, { paddingTop: topPad + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => { stopSpeaking(); router.back(); }} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.foreground} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -309,7 +379,13 @@ export default function ChatScreen() {
             <Text style={[styles.modeTagText, { color: modeColor, fontFamily: "Inter_500Medium" }]}>{modeLabel}</Text>
           </View>
         </View>
-        <View style={{ width: 40 }} />
+        {isSpeaking ? (
+          <TouchableOpacity onPress={stopSpeaking} style={styles.speakBtn}>
+            <Ionicons name="volume-mute" size={22} color={modeColor} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
       </View>
 
       {historyLoading ? (
@@ -329,6 +405,11 @@ export default function ChatScreen() {
               <Text style={[styles.emptySubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
                 Ask your question or upload a photo of your textbook
               </Text>
+              {Platform.OS !== "web" && (
+                <Text style={[styles.emptyHint, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                  Long-press any response to hear it read aloud
+                </Text>
+              )}
             </View>
           )}
 
@@ -342,10 +423,7 @@ export default function ChatScreen() {
               keyExtractor={(item) => item.id}
               inverted
               renderItem={renderMessage}
-              contentContainerStyle={[
-                styles.messageList,
-                { paddingBottom: 16, paddingTop: 16 },
-              ]}
+              contentContainerStyle={[styles.messageList, { paddingBottom: 16, paddingTop: 16 }]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
@@ -402,14 +480,16 @@ const styles = StyleSheet.create({
   subjectLabel: { fontSize: 16 },
   modeTag: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   modeTagText: { fontSize: 12 },
+  speakBtn: { width: 40, alignItems: "center" },
   historyLoading: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyState: {
-    position: "absolute", left: 0, right: 0, top: "35%",
-    alignItems: "center", paddingHorizontal: 40, gap: 12, zIndex: -1,
+    position: "absolute", left: 0, right: 0, top: "30%",
+    alignItems: "center", paddingHorizontal: 40, gap: 10, zIndex: -1,
   },
   emptyIcon: { width: 72, height: 72, borderRadius: 24, justifyContent: "center", alignItems: "center" },
   emptyTitle: { fontSize: 16, textAlign: "center" },
   emptySubtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
+  emptyHint: { fontSize: 12, textAlign: "center", lineHeight: 18, fontStyle: "italic" },
   messageList: { paddingHorizontal: 16 },
   messageRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginBottom: 12 },
   userRow: { justifyContent: "flex-end" },
