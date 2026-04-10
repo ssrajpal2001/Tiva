@@ -99,6 +99,7 @@ export default function ChatScreen() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const messageSentAtRef = useRef<number | null>(null);
 
   const modeColor = MODE_COLORS[mode ?? "ask"] ?? colors.primary;
   const modeLabel = MODE_LABELS[mode ?? "ask"] ?? "Ask";
@@ -224,15 +225,22 @@ export default function ChatScreen() {
     }
   }, []);
 
-  const awardXpWithBackend = useCallback(async (xpAmount: number, subjectName: string) => {
-    awardXp(xpAmount, subjectName);
-    if (!profile?.deviceId) return;
-    fetch(`${getBaseUrl()}/api/progress/${encodeURIComponent(profile.deviceId)}/xp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ xp: xpAmount, subject: subjectName, reason: "chat_message" }),
-    }).catch(() => {});
-  }, [awardXp, profile?.deviceId]);
+  const { refreshFromBackend } = useProgress();
+
+  const awardXpWithBackend = useCallback(async (xpAmount: number, subjectName: string, timeMinutes: number) => {
+    awardXp(xpAmount, subjectName, timeMinutes);
+    const deviceId = profile?.deviceId;
+    if (!deviceId) return;
+    try {
+      await fetch(`${getBaseUrl()}/api/progress/${encodeURIComponent(deviceId)}/xp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ xp: xpAmount, subject: subjectName, reason: "chat_message", timeMinutes }),
+      });
+      await refreshFromBackend(deviceId);
+    } catch {
+    }
+  }, [awardXp, profile?.deviceId, refreshFromBackend]);
 
   const sendMessage = useCallback(async (content: string, imageBase64?: string) => {
     if (!content.trim() && !imageBase64) return;
@@ -249,6 +257,7 @@ export default function ChatScreen() {
     setInput("");
     setIsSending(true);
     setStreamingContent("");
+    messageSentAtRef.current = Date.now();
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -315,7 +324,10 @@ export default function ChatScreen() {
                 };
                 setMessages((prev) => [assistantMessage, ...prev]);
                 setStreamingContent("");
-                await awardXpWithBackend(10, subject ?? "General");
+                const elapsedMs = messageSentAtRef.current ? Date.now() - messageSentAtRef.current : 0;
+                const elapsedMinutes = Math.max(Math.round(elapsedMs / 60000), 1);
+                messageSentAtRef.current = null;
+                await awardXpWithBackend(10, subject ?? "General", elapsedMinutes);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 speakText(cleanResponse);
               }

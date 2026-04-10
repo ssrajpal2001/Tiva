@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 
 export interface SubjectProgress {
   subject: string;
@@ -23,6 +23,7 @@ export interface ProgressData {
 interface ProgressContextType {
   progress: ProgressData;
   awardXp: (xp: number, subject: string, timeMinutes?: number) => void;
+  refreshFromBackend: (deviceId: string) => Promise<void>;
 }
 
 const DEFAULT_PROGRESS: ProgressData = {
@@ -40,6 +41,7 @@ const STORAGE_KEY = "student_progress_v2";
 const ProgressContext = createContext<ProgressContextType>({
   progress: DEFAULT_PROGRESS,
   awardXp: () => {},
+  refreshFromBackend: async () => {},
 });
 
 const BADGE_CONDITIONS = [
@@ -60,8 +62,33 @@ function computeLevel(xp: number) {
   return Math.floor(Math.sqrt(xp / 100)) + 1;
 }
 
+function normalizeBackendProgress(data: Record<string, unknown>): ProgressData {
+  return {
+    totalXp: (data["totalXp"] as number | undefined) ?? 0,
+    level: (data["level"] as number | undefined) ?? computeLevel((data["totalXp"] as number | undefined) ?? 0),
+    streak: (data["streak"] as number | undefined) ?? 0,
+    totalQuestions: (data["totalQuestions"] as number | undefined) ?? 0,
+    totalTimeMinutes: (data["totalTimeMinutes"] as number | undefined) ?? 0,
+    subjectBreakdown: (data["subjectBreakdown"] as SubjectProgress[] | undefined) ?? [],
+    badges: (data["badges"] as string[] | undefined) ?? [],
+    lastActiveAt: (data["lastActiveAt"] as string | undefined),
+    lastStreakDate: (data["lastStreakDate"] as string | undefined),
+  };
+}
+
+function getBaseUrl(): string {
+  return process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+}
+
 export function ProgressProvider({ children }: { children: React.ReactNode }) {
   const [progress, setProgress] = useState<ProgressData>(DEFAULT_PROGRESS);
+
+  const persistProgress = useCallback(async (p: ProgressData) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+    } catch {
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -71,11 +98,26 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
           const parsed = JSON.parse(raw) as ProgressData;
           setProgress({ ...DEFAULT_PROGRESS, ...parsed });
         }
-      } catch (_e) {}
+      } catch {
+      }
     })();
   }, []);
 
-  const awardXp = (xp: number, subject: string, timeMinutes = 0) => {
+  const refreshFromBackend = useCallback(async (deviceId: string) => {
+    if (!deviceId) return;
+    try {
+      const response = await fetch(`${getBaseUrl()}/api/progress/${encodeURIComponent(deviceId)}`);
+      if (response.ok) {
+        const data = await response.json() as Record<string, unknown>;
+        const backendProgress = normalizeBackendProgress(data);
+        setProgress(backendProgress);
+        await persistProgress(backendProgress);
+      }
+    } catch {
+    }
+  }, [persistProgress]);
+
+  const awardXp = useCallback((xp: number, subject: string, timeMinutes = 0) => {
     setProgress((prev) => {
       const newTotalXp = prev.totalXp + xp;
       const newLevel = computeLevel(newTotalXp);
@@ -131,10 +173,10 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
       return updated;
     });
-  };
+  }, []);
 
   return (
-    <ProgressContext.Provider value={{ progress, awardXp }}>
+    <ProgressContext.Provider value={{ progress, awardXp, refreshFromBackend }}>
       {children}
     </ProgressContext.Provider>
   );

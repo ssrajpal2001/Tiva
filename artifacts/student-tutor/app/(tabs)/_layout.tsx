@@ -4,9 +4,11 @@ import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import React, { useEffect } from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { useProfile } from "@/contexts/ProfileContext";
+import { useProgress } from "@/contexts/ProgressContext";
 
 function NativeTabLayout() {
   return (
@@ -116,9 +118,30 @@ function ClassicTabLayout() {
   );
 }
 
+function ProgressBootstrap() {
+  const { profile } = useProfile();
+  const { refreshFromBackend } = useProgress();
+  useEffect(() => {
+    if (profile?.deviceId) {
+      refreshFromBackend(profile.deviceId).catch(() => {});
+    }
+  }, [profile?.deviceId, refreshFromBackend]);
+  return null;
+}
+
 export default function TabLayout() {
   if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
+    return (
+      <>
+        <ProgressBootstrap />
+        <NativeTabLayout />
+      </>
+    );
   }
-  return <ClassicTabLayout />;
+  return (
+    <>
+      <ProgressBootstrap />
+      <ClassicTabLayout />
+    </>
+  );
 }
