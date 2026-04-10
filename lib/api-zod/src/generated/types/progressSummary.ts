@@ -13,6 +13,7 @@ export interface ProgressSummary {
   level: number;
   streak: number;
   totalQuestions: number;
+  totalTimeMinutes: number;
   subjectBreakdown: SubjectProgress[];
   badges: string[];
   lastActiveAt?: Date;

@@ -16,8 +16,6 @@ tags:
     description: AI tutor chat operations
   - name: progress
     description: Student progress tracking
-  - name: openai
-    description: OpenAI AI chat, image, and audio operations
 paths:
   /healthz:
     get:
@@ -120,6 +118,11 @@ paths:
           required: true
           schema:
             type: integer
+        - name: deviceId
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           description: Session with messages
@@ -139,6 +142,11 @@ paths:
           required: true
           schema:
             type: integer
+        - name: deviceId
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
         "204":
           description: Deleted
@@ -189,11 +197,51 @@ paths:
           content:
             text/event-stream: {}
 
+  /tutor/transcribe:
+    post:
+      operationId: transcribeAudio
+      tags: [tutor]
+      summary: Transcribe audio to text using Whisper
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscribeBody"
+      responses:
+        "200":
+          description: Transcribed text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscribeResponse"
+
+  /tutor/weak-topics/{deviceId}:
+    get:
+      operationId: getWeakTopics
+      tags: [tutor]
+      summary: Get weak topics for a student
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of weak topics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeakTopic"
+
   /progress/{deviceId}:
     get:
       operationId: getProgress
       tags: [progress]
-      summary: Get student progress summary
+      summary: Get student progress summary (awards daily login XP on first call each day)
       parameters:
         - name: deviceId
           in: path
@@ -232,166 +280,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProgressSummary"
-
-  /openai/conversations:
-    get:
-      operationId: listOpenaiConversations
-      tags: [openai]
-      summary: List all conversations
-      responses:
-        "200":
-          description: List of conversations
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/OpenaiConversation"
-    post:
-      operationId: createOpenaiConversation
-      tags: [openai]
-      summary: Create a new conversation
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateOpenaiConversationBody"
-      responses:
-        "201":
-          description: Created conversation
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OpenaiConversation"
-
-  /openai/conversations/{id}:
-    get:
-      operationId: getOpenaiConversation
-      tags: [openai]
-      summary: Get conversation with messages
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Conversation with messages
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OpenaiConversationWithMessages"
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OpenaiError"
-    delete:
-      operationId: deleteOpenaiConversation
-      tags: [openai]
-      summary: Delete a conversation
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "204":
-          description: Deleted
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OpenaiError"
-
-  /openai/conversations/{id}/messages:
-    get:
-      operationId: listOpenaiMessages
-      tags: [openai]
-      summary: List messages in a conversation
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: List of messages
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/OpenaiMessage"
-    post:
-      operationId: sendOpenaiMessage
-      tags: [openai]
-      summary: Send a text message and receive a streaming text response
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SendOpenaiMessageBody"
-      responses:
-        "200":
-          description: SSE stream of assistant text chunks
-          content:
-            text/event-stream: {}
-
-  /openai/conversations/{id}/voice-messages:
-    post:
-      operationId: sendOpenaiVoiceMessage
-      tags: [openai]
-      summary: Send audio and receive a streaming voice response
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SendOpenaiVoiceMessageBody"
-      responses:
-        "200":
-          description: SSE stream of transcript and audio chunks
-          content:
-            text/event-stream: {}
-
-  /openai/generate-image:
-    post:
-      operationId: generateOpenaiImage
-      tags: [openai]
-      summary: Generate an image from a text prompt
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GenerateOpenaiImageBody"
-      responses:
-        "200":
-          description: Generated image data
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GenerateOpenaiImageResponse"
 
 components:
   schemas:
@@ -624,6 +512,50 @@ components:
         - subject
         - mode
 
+    TranscribeBody:
+      type: object
+      properties:
+        audioBase64:
+          type: string
+          description: Base64 encoded audio data
+        mimeType:
+          type: string
+          description: MIME type of the audio (e.g. audio/m4a)
+      required:
+        - audioBase64
+
+    TranscribeResponse:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Transcribed text from the audio
+      required:
+        - text
+
+    WeakTopic:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        subject:
+          type: string
+        topic:
+          type: string
+        errorCount:
+          type: integer
+        lastSeenAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - subject
+        - topic
+        - errorCount
+
     ProgressSummary:
       type: object
       properties:
@@ -636,6 +568,8 @@ components:
         streak:
           type: integer
         totalQuestions:
+          type: integer
+        totalTimeMinutes:
           type: integer
         subjectBreakdown:
           type: array
@@ -654,6 +588,7 @@ components:
         - level
         - streak
         - totalQuestions
+        - totalTimeMinutes
         - subjectBreakdown
         - badges
 
@@ -666,10 +601,13 @@ components:
           type: integer
         xp:
           type: integer
+        timeMinutes:
+          type: integer
       required:
         - subject
         - questionCount
         - xp
+        - timeMinutes
 
     AwardXpBody:
       type: object
@@ -680,114 +618,8 @@ components:
           type: string
         reason:
           type: string
+        timeMinutes:
+          type: integer
       required:
         - xp
         - subject
-
-    OpenaiConversation:
-      type: object
-      properties:
-        id:
-          type: integer
-        title:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - title
-        - createdAt
-
-    OpenaiMessage:
-      type: object
-      properties:
-        id:
-          type: integer
-        conversationId:
-          type: integer
-        role:
-          type: string
-        content:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - conversationId
-        - role
-        - content
-        - createdAt
-
-    CreateOpenaiConversationBody:
-      type: object
-      properties:
-        title:
-          type: string
-      required:
-        - title
-
-    SendOpenaiMessageBody:
-      type: object
-      properties:
-        content:
-          type: string
-      required:
-        - content
-
-    SendOpenaiVoiceMessageBody:
-      type: object
-      properties:
-        audio:
-          type: string
-          description: Base64-encoded audio data
-      required:
-        - audio
-
-    OpenaiConversationWithMessages:
-      type: object
-      properties:
-        id:
-          type: integer
-        title:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        messages:
-          type: array
-          items:
-            $ref: "#/components/schemas/OpenaiMessage"
-      required:
-        - id
-        - title
-        - createdAt
-        - messages
-
-    GenerateOpenaiImageBody:
-      type: object
-      properties:
-        prompt:
-          type: string
-        size:
-          type: string
-          enum: ["1024x1024", "512x512", "256x256"]
-      required:
-        - prompt
-
-    GenerateOpenaiImageResponse:
-      type: object
-      properties:
-        b64_json:
-          type: string
-      required:
-        - b64_json
-
-    OpenaiError:
-      type: object
-      properties:
-        error:
-          type: string
-      required:
-        - error

@@ -6,8 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface OpenaiConversation {
+export interface WeakTopic {
   id: number;
-  title: string;
-  createdAt: Date;
+  deviceId: string;
+  subject: string;
+  topic: string;
+  errorCount: number;
+  lastSeenAt?: Date;
 }

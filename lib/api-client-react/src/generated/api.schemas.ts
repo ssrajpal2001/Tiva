@@ -92,10 +92,32 @@ export interface SendImageMessageBody {
   mode: string;
 }
 
+export interface TranscribeBody {
+  /** Base64 encoded audio data */
+  audioBase64: string;
+  /** MIME type of the audio (e.g. audio/m4a) */
+  mimeType?: string;
+}
+
+export interface TranscribeResponse {
+  /** Transcribed text from the audio */
+  text: string;
+}
+
+export interface WeakTopic {
+  id: number;
+  deviceId: string;
+  subject: string;
+  topic: string;
+  errorCount: number;
+  lastSeenAt?: string;
+}
+
 export interface SubjectProgress {
   subject: string;
   questionCount: number;
   xp: number;
+  timeMinutes: number;
 }
 
 export interface ProgressSummary {
@@ -104,6 +126,7 @@ export interface ProgressSummary {
   level: number;
   streak: number;
   totalQuestions: number;
+  totalTimeMinutes: number;
   subjectBreakdown: SubjectProgress[];
   badges: string[];
   lastActiveAt?: string;
@@ -113,62 +136,7 @@ export interface AwardXpBody {
   xp: number;
   subject: string;
   reason?: string;
-}
-
-export interface OpenaiConversation {
-  id: number;
-  title: string;
-  createdAt: string;
-}
-
-export interface OpenaiMessage {
-  id: number;
-  conversationId: number;
-  role: string;
-  content: string;
-  createdAt: string;
-}
-
-export interface CreateOpenaiConversationBody {
-  title: string;
-}
-
-export interface SendOpenaiMessageBody {
-  content: string;
-}
-
-export interface SendOpenaiVoiceMessageBody {
-  /** Base64-encoded audio data */
-  audio: string;
-}
-
-export interface OpenaiConversationWithMessages {
-  id: number;
-  title: string;
-  createdAt: string;
-  messages: OpenaiMessage[];
-}
-
-export type GenerateOpenaiImageBodySize =
-  (typeof GenerateOpenaiImageBodySize)[keyof typeof GenerateOpenaiImageBodySize];
-
-export const GenerateOpenaiImageBodySize = {
-  "1024x1024": "1024x1024",
-  "512x512": "512x512",
-  "256x256": "256x256",
-} as const;
-
-export interface GenerateOpenaiImageBody {
-  prompt: string;
-  size?: GenerateOpenaiImageBodySize;
-}
-
-export interface GenerateOpenaiImageResponse {
-  b64_json: string;
-}
-
-export interface OpenaiError {
-  error: string;
+  timeMinutes?: number;
 }
 
 export type GetProfileParams = {
@@ -176,5 +144,13 @@ export type GetProfileParams = {
 };
 
 export type ListSessionsParams = {
+  deviceId: string;
+};
+
+export type GetSessionParams = {
+  deviceId: string;
+};
+
+export type DeleteSessionParams = {
   deviceId: string;
 };

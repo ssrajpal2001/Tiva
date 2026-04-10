@@ -283,56 +283,75 @@ export default function ChatScreen() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
+      let sseBuffer = "";
+
+      const handleSseEvent = async (eventData: string) => {
+        const trimmed = eventData.trim();
+        if (!trimmed) return;
+        let data: { content?: string; done?: boolean; extractedQuestion?: string };
+        try {
+          data = JSON.parse(trimmed) as typeof data;
+        } catch {
+          return;
+        }
+        if (data.content) {
+          accumulated += data.content;
+          setStreamingContent(accumulated);
+        }
+        if (data.done) {
+          if (data.extractedQuestion) {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const firstUserIdx = updated.findIndex((m) => m.role === "user");
+              if (firstUserIdx >= 0 && updated[firstUserIdx]) {
+                updated[firstUserIdx] = {
+                  ...updated[firstUserIdx]!,
+                  content: `[Image] ${data.extractedQuestion}`,
+                };
+              }
+              return updated;
+            });
+          }
+          const cleanResponse = accumulated.replace(/^TOPIC:.*$/m, "").trim();
+          const assistantMessage: Message = {
+            id: Date.now().toString() + "a",
+            role: "assistant",
+            content: cleanResponse,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) => [assistantMessage, ...prev]);
+          setStreamingContent("");
+          const elapsedMs = messageSentAtRef.current ? Date.now() - messageSentAtRef.current : 0;
+          const elapsedMinutes = Math.max(Math.round(elapsedMs / 60000), 1);
+          messageSentAtRef.current = null;
+          await awardXpWithBackend(10, subject ?? "General", elapsedMinutes);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          speakText(cleanResponse);
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        sseBuffer += decoder.decode(value, { stream: true });
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6)) as {
-                content?: string; done?: boolean; extractedQuestion?: string;
-              };
-              if (data.content) {
-                accumulated += data.content;
-                setStreamingContent(accumulated);
-              }
-              if (data.done) {
-                if (data.extractedQuestion) {
-                  setMessages((prev) => {
-                    const updated = [...prev];
-                    const firstUserIdx = updated.findIndex((m) => m.role === "user");
-                    if (firstUserIdx >= 0 && updated[firstUserIdx]) {
-                      updated[firstUserIdx] = {
-                        ...updated[firstUserIdx]!,
-                        content: `[Image] ${data.extractedQuestion}`,
-                      };
-                    }
-                    return updated;
-                  });
-                }
-                const cleanResponse = accumulated.replace(/^TOPIC:.*$/m, "").trim();
-                const assistantMessage: Message = {
-                  id: Date.now().toString() + "a",
-                  role: "assistant",
-                  content: cleanResponse,
-                  timestamp: new Date().toISOString(),
-                };
-                setMessages((prev) => [assistantMessage, ...prev]);
-                setStreamingContent("");
-                const elapsedMs = messageSentAtRef.current ? Date.now() - messageSentAtRef.current : 0;
-                const elapsedMinutes = Math.max(Math.round(elapsedMs / 60000), 1);
-                messageSentAtRef.current = null;
-                await awardXpWithBackend(10, subject ?? "General", elapsedMinutes);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                speakText(cleanResponse);
-              }
-            } catch {
+        const events = sseBuffer.split("\n\n");
+        sseBuffer = events.pop() ?? "";
+
+        for (const event of events) {
+          for (const line of event.split("\n")) {
+            if (line.startsWith("data: ")) {
+              await handleSseEvent(line.slice(6));
             }
+          }
+        }
+      }
+
+      if (sseBuffer.trim()) {
+        for (const line of sseBuffer.split("\n")) {
+          if (line.startsWith("data: ")) {
+            await handleSseEvent(line.slice(6));
           }
         }
       }

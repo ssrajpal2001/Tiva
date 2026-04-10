@@ -10,4 +10,5 @@ export interface SubjectProgress {
   subject: string;
   questionCount: number;
   xp: number;
+  timeMinutes: number;
 }

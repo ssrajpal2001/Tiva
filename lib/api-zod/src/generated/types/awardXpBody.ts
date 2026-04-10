@@ -10,4 +10,5 @@ export interface AwardXpBody {
   xp: number;
   subject: string;
   reason?: string;
+  timeMinutes?: number;
 }
