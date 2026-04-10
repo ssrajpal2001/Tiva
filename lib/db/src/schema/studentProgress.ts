@@ -9,10 +9,12 @@ export const studentProgressTable = pgTable("student_progress", {
   level: integer("level").notNull().default(1),
   streak: integer("streak").notNull().default(0),
   totalQuestions: integer("total_questions").notNull().default(0),
-  subjectBreakdown: jsonb("subject_breakdown").$type<Array<{ subject: string; questionCount: number; xp: number }>>().notNull().default([]),
+  totalTimeMinutes: integer("total_time_minutes").notNull().default(0),
+  subjectBreakdown: jsonb("subject_breakdown").$type<Array<{ subject: string; questionCount: number; xp: number; timeMinutes: number }>>().notNull().default([]),
   badges: jsonb("badges").$type<string[]>().notNull().default([]),
   lastActiveAt: timestamp("last_active_at").notNull().defaultNow(),
   lastStreakDate: text("last_streak_date"),
+  lastLoginXpDate: text("last_login_xp_date"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

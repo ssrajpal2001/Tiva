@@ -5,6 +5,7 @@ export interface SubjectProgress {
   subject: string;
   questionCount: number;
   xp: number;
+  timeMinutes: number;
 }
 
 export interface ProgressData {
@@ -12,6 +13,7 @@ export interface ProgressData {
   level: number;
   streak: number;
   totalQuestions: number;
+  totalTimeMinutes: number;
   subjectBreakdown: SubjectProgress[];
   badges: string[];
   lastActiveAt?: string;
@@ -20,7 +22,7 @@ export interface ProgressData {
 
 interface ProgressContextType {
   progress: ProgressData;
-  awardXp: (xp: number, subject: string) => void;
+  awardXp: (xp: number, subject: string, timeMinutes?: number) => void;
 }
 
 const DEFAULT_PROGRESS: ProgressData = {
@@ -28,11 +30,12 @@ const DEFAULT_PROGRESS: ProgressData = {
   level: 1,
   streak: 0,
   totalQuestions: 0,
+  totalTimeMinutes: 0,
   subjectBreakdown: [],
   badges: [],
 };
 
-const STORAGE_KEY = "student_progress_v1";
+const STORAGE_KEY = "student_progress_v2";
 
 const ProgressContext = createContext<ProgressContextType>({
   progress: DEFAULT_PROGRESS,
@@ -47,6 +50,8 @@ const BADGE_CONDITIONS = [
   { id: "streak_7", label: "Weekly Warrior", check: (p: ProgressData) => p.streak >= 7 },
   { id: "level_5", label: "Rising Scholar", check: (p: ProgressData) => p.level >= 5 },
   { id: "level_10", label: "Knowledge Seeker", check: (p: ProgressData) => p.level >= 10 },
+  { id: "time_60", label: "Hour Scholar", check: (p: ProgressData) => p.totalTimeMinutes >= 60 },
+  { id: "time_300", label: "Dedicated Learner", check: (p: ProgressData) => p.totalTimeMinutes >= 300 },
 ];
 
 export const BADGE_LABELS: Record<string, string> = Object.fromEntries(BADGE_CONDITIONS.map((b) => [b.id, b.label]));
@@ -62,27 +67,32 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) setProgress(JSON.parse(raw));
+        if (raw) {
+          const parsed = JSON.parse(raw) as ProgressData;
+          setProgress({ ...DEFAULT_PROGRESS, ...parsed });
+        }
       } catch (_e) {}
     })();
   }, []);
 
-  const awardXp = async (xp: number, subject: string) => {
+  const awardXp = (xp: number, subject: string, timeMinutes = 0) => {
     setProgress((prev) => {
       const newTotalXp = prev.totalXp + xp;
       const newLevel = computeLevel(newTotalXp);
       const newTotalQuestions = prev.totalQuestions + 1;
+      const newTotalTimeMinutes = (prev.totalTimeMinutes ?? 0) + timeMinutes;
 
       const subjectBreakdown = [...(prev.subjectBreakdown ?? [])];
       const idx = subjectBreakdown.findIndex((s) => s.subject === subject);
-      if (idx >= 0) {
+      if (idx >= 0 && subjectBreakdown[idx]) {
         subjectBreakdown[idx] = {
-          ...subjectBreakdown[idx],
+          ...subjectBreakdown[idx]!,
           questionCount: (subjectBreakdown[idx]?.questionCount ?? 0) + 1,
           xp: (subjectBreakdown[idx]?.xp ?? 0) + xp,
+          timeMinutes: (subjectBreakdown[idx]?.timeMinutes ?? 0) + timeMinutes,
         };
       } else {
-        subjectBreakdown.push({ subject, questionCount: 1, xp });
+        subjectBreakdown.push({ subject, questionCount: 1, xp, timeMinutes });
       }
 
       const today = new Date().toISOString().split("T")[0];
@@ -103,6 +113,7 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
         level: newLevel,
         streak: newStreak,
         totalQuestions: newTotalQuestions,
+        totalTimeMinutes: newTotalTimeMinutes,
         subjectBreakdown,
         badges: prev.badges ?? [],
         lastActiveAt: new Date().toISOString(),
