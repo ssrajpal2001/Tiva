@@ -10,6 +10,14 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: profile
+    description: Student profile operations
+  - name: tutor
+    description: AI tutor chat operations
+  - name: progress
+    description: Student progress tracking
+  - name: openai
+    description: OpenAI AI chat, image, and audio operations
 paths:
   /healthz:
     get:
@@ -24,6 +32,367 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [profile]
+      summary: Get student profile
+      parameters:
+        - name: deviceId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Student profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentProfile"
+        "404":
+          description: Profile not found
+    post:
+      operationId: createOrUpdateProfile
+      tags: [profile]
+      summary: Create or update student profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertProfileBody"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentProfile"
+
+  /tutor/sessions:
+    get:
+      operationId: listSessions
+      tags: [tutor]
+      summary: List chat sessions for a device
+      parameters:
+        - name: deviceId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatSession"
+    post:
+      operationId: createSession
+      tags: [tutor]
+      summary: Create a new chat session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionBody"
+      responses:
+        "201":
+          description: Created session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatSession"
+
+  /tutor/sessions/{id}:
+    get:
+      operationId: getSession
+      tags: [tutor]
+      summary: Get a session with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatSessionWithMessages"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteSession
+      tags: [tutor]
+      summary: Delete a chat session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /tutor/sessions/{id}/messages:
+    post:
+      operationId: sendMessage
+      tags: [tutor]
+      summary: Send a message to the AI tutor (streaming SSE)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "200":
+          description: SSE stream of AI tutor response chunks
+          content:
+            text/event-stream: {}
+
+  /tutor/sessions/{id}/image-messages:
+    post:
+      operationId: sendImageMessage
+      tags: [tutor]
+      summary: Send an image (OCR) message to the AI tutor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendImageMessageBody"
+      responses:
+        "200":
+          description: SSE stream of AI tutor response for image question
+          content:
+            text/event-stream: {}
+
+  /progress/{deviceId}:
+    get:
+      operationId: getProgress
+      tags: [progress]
+      summary: Get student progress summary
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Progress summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgressSummary"
+
+  /progress/{deviceId}/xp:
+    post:
+      operationId: awardXp
+      tags: [progress]
+      summary: Award XP to a student
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AwardXpBody"
+      responses:
+        "200":
+          description: Updated progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgressSummary"
+
+  /openai/conversations:
+    get:
+      operationId: listOpenaiConversations
+      tags: [openai]
+      summary: List all conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiConversation"
+    post:
+      operationId: createOpenaiConversation
+      tags: [openai]
+      summary: Create a new conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOpenaiConversationBody"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversation"
+
+  /openai/conversations/{id}:
+    get:
+      operationId: getOpenaiConversation
+      tags: [openai]
+      summary: Get conversation with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+    delete:
+      operationId: deleteOpenaiConversation
+      tags: [openai]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+
+  /openai/conversations/{id}/messages:
+    get:
+      operationId: listOpenaiMessages
+      tags: [openai]
+      summary: List messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiMessage"
+    post:
+      operationId: sendOpenaiMessage
+      tags: [openai]
+      summary: Send a text message and receive a streaming text response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOpenaiMessageBody"
+      responses:
+        "200":
+          description: SSE stream of assistant text chunks
+          content:
+            text/event-stream: {}
+
+  /openai/conversations/{id}/voice-messages:
+    post:
+      operationId: sendOpenaiVoiceMessage
+      tags: [openai]
+      summary: Send audio and receive a streaming voice response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOpenaiVoiceMessageBody"
+      responses:
+        "200":
+          description: SSE stream of transcript and audio chunks
+          content:
+            text/event-stream: {}
+
+  /openai/generate-image:
+    post:
+      operationId: generateOpenaiImage
+      tags: [openai]
+      summary: Generate an image from a text prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateOpenaiImageBody"
+      responses:
+        "200":
+          description: Generated image data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateOpenaiImageResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +403,391 @@ components:
       required:
         - status
 
+    StudentProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        name:
+          type: string
+        grade:
+          type: string
+        board:
+          type: string
+        subjects:
+          type: array
+          items:
+            type: string
+        goal:
+          type: string
+        preferredLanguage:
+          type: string
+        voicePersonality:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - name
+        - grade
+        - board
+        - subjects
+        - createdAt
+        - updatedAt
+
+    UpsertProfileBody:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        name:
+          type: string
+        grade:
+          type: string
+        board:
+          type: string
+        subjects:
+          type: array
+          items:
+            type: string
+        goal:
+          type: string
+        preferredLanguage:
+          type: string
+        voicePersonality:
+          type: string
+      required:
+        - deviceId
+        - name
+        - grade
+        - board
+        - subjects
+
+    ChatSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        subject:
+          type: string
+        mode:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - subject
+        - mode
+        - title
+        - createdAt
+        - updatedAt
+
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        imageUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sessionId
+        - role
+        - content
+        - createdAt
+
+    ChatSessionWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        subject:
+          type: string
+        mode:
+          type: string
+        title:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - subject
+        - mode
+        - title
+        - messages
+        - createdAt
+        - updatedAt
+
+    CreateSessionBody:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        subject:
+          type: string
+        mode:
+          type: string
+        title:
+          type: string
+        grade:
+          type: string
+        board:
+          type: string
+      required:
+        - deviceId
+        - subject
+        - mode
+        - title
+        - grade
+        - board
+
+    SendMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        deviceId:
+          type: string
+        grade:
+          type: string
+        board:
+          type: string
+        subject:
+          type: string
+        mode:
+          type: string
+      required:
+        - content
+        - deviceId
+        - grade
+        - board
+        - subject
+        - mode
+
+    SendImageMessageBody:
+      type: object
+      properties:
+        imageBase64:
+          type: string
+          description: Base64 encoded image of handwritten or printed question
+        deviceId:
+          type: string
+        grade:
+          type: string
+        board:
+          type: string
+        subject:
+          type: string
+        mode:
+          type: string
+      required:
+        - imageBase64
+        - deviceId
+        - grade
+        - board
+        - subject
+        - mode
+
+    ProgressSummary:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        totalXp:
+          type: integer
+        level:
+          type: integer
+        streak:
+          type: integer
+        totalQuestions:
+          type: integer
+        subjectBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubjectProgress"
+        badges:
+          type: array
+          items:
+            type: string
+        lastActiveAt:
+          type: string
+          format: date-time
+      required:
+        - deviceId
+        - totalXp
+        - level
+        - streak
+        - totalQuestions
+        - subjectBreakdown
+        - badges
+
+    SubjectProgress:
+      type: object
+      properties:
+        subject:
+          type: string
+        questionCount:
+          type: integer
+        xp:
+          type: integer
+      required:
+        - subject
+        - questionCount
+        - xp
+
+    AwardXpBody:
+      type: object
+      properties:
+        xp:
+          type: integer
+        subject:
+          type: string
+        reason:
+          type: string
+      required:
+        - xp
+        - subject
+
+    OpenaiConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - createdAt
+
+    OpenaiMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - conversationId
+        - role
+        - content
+        - createdAt
+
+    CreateOpenaiConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+      required:
+        - title
+
+    SendOpenaiMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+
+    SendOpenaiVoiceMessageBody:
+      type: object
+      properties:
+        audio:
+          type: string
+          description: Base64-encoded audio data
+      required:
+        - audio
+
+    OpenaiConversationWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenaiMessage"
+      required:
+        - id
+        - title
+        - createdAt
+        - messages
+
+    GenerateOpenaiImageBody:
+      type: object
+      properties:
+        prompt:
+          type: string
+        size:
+          type: string
+          enum: ["1024x1024", "512x512", "256x256"]
+      required:
+        - prompt
+
+    GenerateOpenaiImageResponse:
+      type: object
+      properties:
+        b64_json:
+          type: string
+      required:
+        - b64_json
+
+    OpenaiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

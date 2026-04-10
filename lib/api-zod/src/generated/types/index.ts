@@ -6,4 +6,27 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./awardXpBody";
+export * from "./chatMessage";
+export * from "./chatSession";
+export * from "./chatSessionWithMessages";
+export * from "./createOpenaiConversationBody";
+export * from "./createSessionBody";
+export * from "./generateOpenaiImageBody";
+export * from "./generateOpenaiImageBodySize";
+export * from "./generateOpenaiImageResponse";
+export * from "./getProfileParams";
 export * from "./healthStatus";
+export * from "./listSessionsParams";
+export * from "./openaiConversation";
+export * from "./openaiConversationWithMessages";
+export * from "./openaiError";
+export * from "./openaiMessage";
+export * from "./progressSummary";
+export * from "./sendImageMessageBody";
+export * from "./sendMessageBody";
+export * from "./sendOpenaiMessageBody";
+export * from "./sendOpenaiVoiceMessageBody";
+export * from "./studentProfile";
+export * from "./subjectProgress";
+export * from "./upsertProfileBody";

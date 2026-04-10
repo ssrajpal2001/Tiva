@@ -14,3 +14,304 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Get student profile
+ */
+export const GetProfileQueryParams = zod.object({
+  deviceId: zod.coerce.string(),
+});
+
+export const GetProfileResponse = zod.object({
+  id: zod.number(),
+  deviceId: zod.string(),
+  name: zod.string(),
+  grade: zod.string(),
+  board: zod.string(),
+  subjects: zod.array(zod.string()),
+  goal: zod.string().optional(),
+  preferredLanguage: zod.string().optional(),
+  voicePersonality: zod.string().optional(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Create or update student profile
+ */
+export const CreateOrUpdateProfileBody = zod.object({
+  deviceId: zod.string(),
+  name: zod.string(),
+  grade: zod.string(),
+  board: zod.string(),
+  subjects: zod.array(zod.string()),
+  goal: zod.string().optional(),
+  preferredLanguage: zod.string().optional(),
+  voicePersonality: zod.string().optional(),
+});
+
+export const CreateOrUpdateProfileResponse = zod.object({
+  id: zod.number(),
+  deviceId: zod.string(),
+  name: zod.string(),
+  grade: zod.string(),
+  board: zod.string(),
+  subjects: zod.array(zod.string()),
+  goal: zod.string().optional(),
+  preferredLanguage: zod.string().optional(),
+  voicePersonality: zod.string().optional(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary List chat sessions for a device
+ */
+export const ListSessionsQueryParams = zod.object({
+  deviceId: zod.coerce.string(),
+});
+
+export const ListSessionsResponseItem = zod.object({
+  id: zod.number(),
+  deviceId: zod.string(),
+  subject: zod.string(),
+  mode: zod.string(),
+  title: zod.string(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListSessionsResponse = zod.array(ListSessionsResponseItem);
+
+/**
+ * @summary Create a new chat session
+ */
+export const CreateSessionBody = zod.object({
+  deviceId: zod.string(),
+  subject: zod.string(),
+  mode: zod.string(),
+  title: zod.string(),
+  grade: zod.string(),
+  board: zod.string(),
+});
+
+/**
+ * @summary Get a session with messages
+ */
+export const GetSessionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetSessionResponse = zod.object({
+  id: zod.number(),
+  deviceId: zod.string(),
+  subject: zod.string(),
+  mode: zod.string(),
+  title: zod.string(),
+  messages: zod.array(
+    zod.object({
+      id: zod.number(),
+      sessionId: zod.number(),
+      role: zod.string(),
+      content: zod.string(),
+      imageUrl: zod.string().optional(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete a chat session
+ */
+export const DeleteSessionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Send a message to the AI tutor (streaming SSE)
+ */
+export const SendMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendMessageBody = zod.object({
+  content: zod.string(),
+  deviceId: zod.string(),
+  grade: zod.string(),
+  board: zod.string(),
+  subject: zod.string(),
+  mode: zod.string(),
+});
+
+/**
+ * @summary Send an image (OCR) message to the AI tutor
+ */
+export const SendImageMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendImageMessageBody = zod.object({
+  imageBase64: zod
+    .string()
+    .describe("Base64 encoded image of handwritten or printed question"),
+  deviceId: zod.string(),
+  grade: zod.string(),
+  board: zod.string(),
+  subject: zod.string(),
+  mode: zod.string(),
+});
+
+/**
+ * @summary Get student progress summary
+ */
+export const GetProgressParams = zod.object({
+  deviceId: zod.coerce.string(),
+});
+
+export const GetProgressResponse = zod.object({
+  deviceId: zod.string(),
+  totalXp: zod.number(),
+  level: zod.number(),
+  streak: zod.number(),
+  totalQuestions: zod.number(),
+  subjectBreakdown: zod.array(
+    zod.object({
+      subject: zod.string(),
+      questionCount: zod.number(),
+      xp: zod.number(),
+    }),
+  ),
+  badges: zod.array(zod.string()),
+  lastActiveAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Award XP to a student
+ */
+export const AwardXpParams = zod.object({
+  deviceId: zod.coerce.string(),
+});
+
+export const AwardXpBody = zod.object({
+  xp: zod.number(),
+  subject: zod.string(),
+  reason: zod.string().optional(),
+});
+
+export const AwardXpResponse = zod.object({
+  deviceId: zod.string(),
+  totalXp: zod.number(),
+  level: zod.number(),
+  streak: zod.number(),
+  totalQuestions: zod.number(),
+  subjectBreakdown: zod.array(
+    zod.object({
+      subject: zod.string(),
+      questionCount: zod.number(),
+      xp: zod.number(),
+    }),
+  ),
+  badges: zod.array(zod.string()),
+  lastActiveAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List all conversations
+ */
+export const ListOpenaiConversationsResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListOpenaiConversationsResponse = zod.array(
+  ListOpenaiConversationsResponseItem,
+);
+
+/**
+ * @summary Create a new conversation
+ */
+export const CreateOpenaiConversationBody = zod.object({
+  title: zod.string(),
+});
+
+/**
+ * @summary Get conversation with messages
+ */
+export const GetOpenaiConversationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetOpenaiConversationResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  createdAt: zod.coerce.date(),
+  messages: zod.array(
+    zod.object({
+      id: zod.number(),
+      conversationId: zod.number(),
+      role: zod.string(),
+      content: zod.string(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Delete a conversation
+ */
+export const DeleteOpenaiConversationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List messages in a conversation
+ */
+export const ListOpenaiMessagesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListOpenaiMessagesResponseItem = zod.object({
+  id: zod.number(),
+  conversationId: zod.number(),
+  role: zod.string(),
+  content: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListOpenaiMessagesResponse = zod.array(
+  ListOpenaiMessagesResponseItem,
+);
+
+/**
+ * @summary Send a text message and receive a streaming text response
+ */
+export const SendOpenaiMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendOpenaiMessageBody = zod.object({
+  content: zod.string(),
+});
+
+/**
+ * @summary Send audio and receive a streaming voice response
+ */
+export const SendOpenaiVoiceMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendOpenaiVoiceMessageBody = zod.object({
+  audio: zod.string().describe("Base64-encoded audio data"),
+});
+
+/**
+ * @summary Generate an image from a text prompt
+ */
+export const GenerateOpenaiImageBody = zod.object({
+  prompt: zod.string(),
+  size: zod.enum(["1024x1024", "512x512", "256x256"]).optional(),
+});
+
+export const GenerateOpenaiImageResponse = zod.object({
+  b64_json: zod.string(),
+});

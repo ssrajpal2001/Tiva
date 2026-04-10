@@ -8,3 +8,173 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface StudentProfile {
+  id: number;
+  deviceId: string;
+  name: string;
+  grade: string;
+  board: string;
+  subjects: string[];
+  goal?: string;
+  preferredLanguage?: string;
+  voicePersonality?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertProfileBody {
+  deviceId: string;
+  name: string;
+  grade: string;
+  board: string;
+  subjects: string[];
+  goal?: string;
+  preferredLanguage?: string;
+  voicePersonality?: string;
+}
+
+export interface ChatSession {
+  id: number;
+  deviceId: string;
+  subject: string;
+  mode: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  sessionId: number;
+  role: string;
+  content: string;
+  imageUrl?: string;
+  createdAt: string;
+}
+
+export interface ChatSessionWithMessages {
+  id: number;
+  deviceId: string;
+  subject: string;
+  mode: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSessionBody {
+  deviceId: string;
+  subject: string;
+  mode: string;
+  title: string;
+  grade: string;
+  board: string;
+}
+
+export interface SendMessageBody {
+  content: string;
+  deviceId: string;
+  grade: string;
+  board: string;
+  subject: string;
+  mode: string;
+}
+
+export interface SendImageMessageBody {
+  /** Base64 encoded image of handwritten or printed question */
+  imageBase64: string;
+  deviceId: string;
+  grade: string;
+  board: string;
+  subject: string;
+  mode: string;
+}
+
+export interface SubjectProgress {
+  subject: string;
+  questionCount: number;
+  xp: number;
+}
+
+export interface ProgressSummary {
+  deviceId: string;
+  totalXp: number;
+  level: number;
+  streak: number;
+  totalQuestions: number;
+  subjectBreakdown: SubjectProgress[];
+  badges: string[];
+  lastActiveAt?: string;
+}
+
+export interface AwardXpBody {
+  xp: number;
+  subject: string;
+  reason?: string;
+}
+
+export interface OpenaiConversation {
+  id: number;
+  title: string;
+  createdAt: string;
+}
+
+export interface OpenaiMessage {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface CreateOpenaiConversationBody {
+  title: string;
+}
+
+export interface SendOpenaiMessageBody {
+  content: string;
+}
+
+export interface SendOpenaiVoiceMessageBody {
+  /** Base64-encoded audio data */
+  audio: string;
+}
+
+export interface OpenaiConversationWithMessages {
+  id: number;
+  title: string;
+  createdAt: string;
+  messages: OpenaiMessage[];
+}
+
+export type GenerateOpenaiImageBodySize =
+  (typeof GenerateOpenaiImageBodySize)[keyof typeof GenerateOpenaiImageBodySize];
+
+export const GenerateOpenaiImageBodySize = {
+  "1024x1024": "1024x1024",
+  "512x512": "512x512",
+  "256x256": "256x256",
+} as const;
+
+export interface GenerateOpenaiImageBody {
+  prompt: string;
+  size?: GenerateOpenaiImageBodySize;
+}
+
+export interface GenerateOpenaiImageResponse {
+  b64_json: string;
+}
+
+export interface OpenaiError {
+  error: string;
+}
+
+export type GetProfileParams = {
+  deviceId: string;
+};
+
+export type ListSessionsParams = {
+  deviceId: string;
+};
