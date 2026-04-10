@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { chatSessionsTable, chatMessagesTable } from "@workspace/db/schema";
+import { chatSessionsTable, chatMessagesTable, weakTopicsTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
@@ -60,17 +60,43 @@ const MODE_INSTRUCTIONS: Record<string, string> = {
   revision: "Give a quick, memorable summary perfect for last-minute revision. Use bullet points, mnemonics, or key facts. Keep it scannable.",
 };
 
-function buildSystemPrompt(subject: string, grade: string, board: string, mode: string): string {
+async function getWeakTopicsContext(deviceId: string, subject: string): Promise<string> {
+  const weak = await db.select().from(weakTopicsTable)
+    .where(and(eq(weakTopicsTable.deviceId, deviceId), eq(weakTopicsTable.subject, subject)))
+    .orderBy(desc(weakTopicsTable.errorCount))
+    .limit(5);
+
+  if (weak.length === 0) return "";
+
+  const topics = weak.map((w) => `- ${w.topic} (asked ${w.errorCount} time${w.errorCount > 1 ? "s" : ""})`).join("\n");
+  return `\nSTUDENT'S WEAK TOPICS (needs extra attention):\n${topics}\nPay special attention to these areas. When relevant, briefly reinforce them even if not directly asked.`;
+}
+
+async function recordWeakTopic(deviceId: string, subject: string, topic: string) {
+  const [existing] = await db.select().from(weakTopicsTable)
+    .where(and(eq(weakTopicsTable.deviceId, deviceId), eq(weakTopicsTable.subject, subject), eq(weakTopicsTable.topic, topic)));
+
+  if (existing) {
+    await db.update(weakTopicsTable)
+      .set({ errorCount: existing.errorCount + 1, lastSeenAt: new Date(), updatedAt: new Date() })
+      .where(eq(weakTopicsTable.id, existing.id));
+  } else {
+    await db.insert(weakTopicsTable).values({ deviceId, subject, topic, errorCount: 1 });
+  }
+}
+
+async function buildSystemPrompt(subject: string, grade: string, board: string, mode: string, deviceId: string): Promise<string> {
   const subjectKey = subject.toLowerCase();
   const persona = SUBJECT_PERSONAS[subjectKey] ?? { name: `${subject} Tutor`, style: `You are an expert ${subject} teacher.` };
   const modeInstruction = MODE_INSTRUCTIONS[mode] ?? MODE_INSTRUCTIONS["ask"];
+  const weakTopicsContext = await getWeakTopicsContext(deviceId, subject);
 
   return `You are ${persona.name} for a ${board} ${grade} student in India.
 
 TEACHING STYLE: ${persona.style}
 
 CURRENT MODE: ${modeInstruction}
-
+${weakTopicsContext}
 STRICT RULES:
 - Only teach content within the ${board} ${grade} ${subject} syllabus. Do NOT go beyond the curriculum.
 - If a question is outside the syllabus, politely say so and redirect to syllabus topics.
@@ -79,6 +105,7 @@ STRICT RULES:
 - Do NOT use emojis. Use numbered lists and clear formatting instead.
 - Keep responses concise but complete. Avoid unnecessary repetition.
 - If a student seems confused, break the explanation into smaller pieces.
+- At the end of your response, if the student asked about a specific topic, add one line: "TOPIC: <topic name>" to help track their learning.
 
 You are their personal tutor — smart, patient, and always on their side.`;
 }
@@ -118,14 +145,14 @@ router.get("/tutor/sessions/:id", async (req, res) => {
   const id = parseInt(req.params["id"] ?? "0");
   const deviceId = req.query["deviceId"] as string | undefined;
 
-  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id));
-  if (!session) {
-    res.status(404).json({ error: "Session not found" });
+  if (!deviceId) {
+    res.status(400).json({ error: "deviceId required" });
     return;
   }
 
-  if (deviceId && session.deviceId !== deviceId) {
-    res.status(403).json({ error: "Forbidden" });
+  const session = await verifySessionOwner(id, deviceId);
+  if (!session) {
+    res.status(404).json({ error: "Session not found or access denied" });
     return;
   }
 
@@ -176,7 +203,7 @@ router.post("/tutor/sessions/:id/messages", async (req, res) => {
     .where(eq(chatMessagesTable.sessionId, id))
     .orderBy(chatMessagesTable.createdAt);
 
-  const systemPrompt = buildSystemPrompt(subject, grade, board, mode);
+  const systemPrompt = await buildSystemPrompt(subject, grade, board, mode, deviceId);
 
   const chatMessages = [
     { role: "system" as const, content: systemPrompt },
@@ -207,6 +234,11 @@ router.post("/tutor/sessions/:id/messages", async (req, res) => {
   await db.insert(chatMessagesTable).values({ sessionId: id, role: "assistant", content: fullResponse });
   await db.update(chatSessionsTable).set({ updatedAt: new Date() }).where(eq(chatSessionsTable.id, id));
 
+  const topicMatch = fullResponse.match(/^TOPIC:\s*(.+)/m);
+  if (topicMatch?.[1]) {
+    await recordWeakTopic(deviceId, subject, topicMatch[1].trim());
+  }
+
   res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
   res.end();
 });
@@ -226,7 +258,7 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
     return;
   }
 
-  const systemPrompt = buildSystemPrompt(subject, grade, board, mode);
+  const systemPrompt = await buildSystemPrompt(subject, grade, board, mode, deviceId);
   const imageUrl = `data:image/jpeg;base64,${imageBase64}`;
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -234,7 +266,6 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
 
   let fullResponse = "";
-  let extractedQuestion = "";
 
   const extractionStream = await openai.chat.completions.create({
     model: "gpt-5.2",
@@ -248,7 +279,8 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
           {
             type: "text",
             text: `First, on a single line starting with "QUESTION: ", write out the exact question or problem visible in the image.
-Then provide a complete step-by-step solution as my ${subject} tutor for a ${board} ${grade} student.`,
+Then provide a complete step-by-step solution as my ${subject} tutor for a ${board} ${grade} student.
+At the end, add "TOPIC: <topic name>" on its own line.`,
           },
         ],
       },
@@ -265,7 +297,12 @@ Then provide a complete step-by-step solution as my ${subject} tutor for a ${boa
   }
 
   const questionMatch = fullResponse.match(/^QUESTION:\s*(.+)/m);
-  extractedQuestion = questionMatch?.[1]?.trim() ?? `[Image question in ${subject}]`;
+  const extractedQuestion = questionMatch?.[1]?.trim() ?? `[Image question in ${subject}]`;
+
+  const topicMatch = fullResponse.match(/^TOPIC:\s*(.+)/m);
+  if (topicMatch?.[1]) {
+    await recordWeakTopic(deviceId, subject, topicMatch[1].trim());
+  }
 
   await db.insert(chatMessagesTable).values({ sessionId: id, role: "user", content: `[Image] ${extractedQuestion}` });
   await db.insert(chatMessagesTable).values({ sessionId: id, role: "assistant", content: fullResponse });
@@ -273,6 +310,18 @@ Then provide a complete step-by-step solution as my ${subject} tutor for a ${boa
 
   res.write(`data: ${JSON.stringify({ done: true, extractedQuestion })}\n\n`);
   res.end();
+});
+
+router.get("/tutor/weak-topics/:deviceId", async (req, res) => {
+  const { deviceId } = req.params;
+  if (!deviceId) {
+    res.status(400).json({ error: "deviceId required" });
+    return;
+  }
+  const topics = await db.select().from(weakTopicsTable)
+    .where(eq(weakTopicsTable.deviceId, deviceId))
+    .orderBy(desc(weakTopicsTable.errorCount));
+  res.json(topics);
 });
 
 export default router;

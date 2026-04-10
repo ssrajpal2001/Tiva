@@ -101,8 +101,9 @@ export default function OnboardingScreen() {
   };
 
   const handleFinish = async () => {
-    await setProfile({
-      deviceId: profile?.deviceId ?? generateDeviceId(),
+    const deviceId = profile?.deviceId ?? generateDeviceId();
+    const profileData = {
+      deviceId,
       name: name.trim(),
       grade,
       board,
@@ -111,7 +112,25 @@ export default function OnboardingScreen() {
       preferredLanguage: language.toLowerCase(),
       voicePersonality: profile?.voicePersonality ?? "friendly",
       onboarded: true,
-    });
+    };
+    await setProfile(profileData);
+
+    const baseUrl = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+    fetch(`${baseUrl}/api/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId,
+        name: name.trim(),
+        grade,
+        board,
+        subjects,
+        goal: goal || null,
+        preferredLanguage: language.toLowerCase(),
+        voicePersonality: "friendly",
+      }),
+    }).catch(() => {});
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.replace("/(tabs)");
   };

@@ -22,3 +22,4 @@ export * from "./messages";
 export * from "./studentProfiles";
 export * from "./chatSessions";
 export * from "./studentProgress";
+export * from "./weakTopics";

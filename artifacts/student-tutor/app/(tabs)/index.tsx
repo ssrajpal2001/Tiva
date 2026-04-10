@@ -122,11 +122,13 @@ export default function ChatTab() {
   };
 
   const deleteSession = async (id: number) => {
+    if (!profile?.deviceId) return;
+    setSessions((prev) => prev.filter((s) => s.id !== id));
     try {
-      await fetch(`${getBaseUrl()}/api/tutor/sessions/${id}`, { method: "DELETE" });
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      await fetch(`${getBaseUrl()}/api/tutor/sessions/${id}?deviceId=${encodeURIComponent(profile.deviceId)}`, {
+        method: "DELETE",
+      });
     } catch {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
     }
   };
 

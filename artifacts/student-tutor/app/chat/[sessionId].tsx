@@ -10,6 +10,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
+import { Audio } from "expo-av";
 import { fetch } from "expo/fetch";
 import { useColors } from "@/hooks/useColors";
 import { useProfile } from "@/contexts/ProfileContext";
@@ -94,6 +95,9 @@ export default function ChatScreen() {
   const [isSending, setIsSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   const modeColor = MODE_COLORS[mode ?? "ask"] ?? colors.primary;
@@ -102,10 +106,11 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const loadHistory = async () => {
-      if (!sessionId) { setHistoryLoading(false); return; }
+      if (!sessionId || !profile?.deviceId) { setHistoryLoading(false); return; }
       try {
-        const deviceIdParam = profile?.deviceId ? `?deviceId=${encodeURIComponent(profile.deviceId)}` : "";
-        const response = await fetch(`${getBaseUrl()}/api/tutor/sessions/${sessionId}${deviceIdParam}`);
+        const response = await fetch(
+          `${getBaseUrl()}/api/tutor/sessions/${sessionId}?deviceId=${encodeURIComponent(profile.deviceId)}`
+        );
         if (response.ok) {
           const data = await response.json();
           const serverMessages: Message[] = (data.messages ?? []).map(
@@ -129,11 +134,11 @@ export default function ChatScreen() {
   const speakText = useCallback(async (text: string) => {
     if (Platform.OS === "web") return;
     try {
-      const isSpeechAvailable = await Speech.isSpeakingAsync();
-      if (isSpeechAvailable) {
+      const speaking = await Speech.isSpeakingAsync();
+      if (speaking) {
         await Speech.stop();
       }
-      const cleanText = text.replace(/[*#_`]/g, "").substring(0, 500);
+      const cleanText = text.replace(/[*#_`]/g, "").replace(/^TOPIC:.*$/m, "").substring(0, 500);
       setIsSpeaking(true);
       Speech.speak(cleanText, {
         language: "en-IN",
@@ -154,17 +159,79 @@ export default function ChatScreen() {
     } catch {}
   }, []);
 
+  const startVoiceRecording = useCallback(async () => {
+    if (isRecording || isSending) return;
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (perm.status !== "granted") {
+        Alert.alert("Permission needed", "Microphone access is needed for voice input");
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
+      setIsRecording(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {
+      setIsRecording(false);
+    }
+  }, [isRecording, isSending]);
+
+  const stopVoiceRecording = useCallback(async () => {
+    if (!recordingRef.current) return;
+    setIsRecording(false);
+    setIsTranscribing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+
+      if (!uri) throw new Error("No recording URI");
+
+      const base64Response = await fetch(uri);
+      const blob = await base64Response.blob();
+      const reader = new FileReader();
+      const audioBase64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1] ?? "");
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const transcribeResponse = await fetch(`${getBaseUrl()}/api/tutor/transcribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audioBase64, mimeType: "audio/m4a" }),
+      });
+
+      if (transcribeResponse.ok) {
+        const { text } = await transcribeResponse.json();
+        if (text?.trim()) {
+          setInput(text.trim());
+          inputRef.current?.focus();
+        }
+      }
+    } catch {
+      Alert.alert("Voice Error", "Could not transcribe audio. Please type your question.");
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, []);
+
   const awardXpWithBackend = useCallback(async (xpAmount: number, subjectName: string) => {
     awardXp(xpAmount, subjectName);
     if (!profile?.deviceId) return;
-    try {
-      await fetch(`${getBaseUrl()}/api/progress/${encodeURIComponent(profile.deviceId)}/xp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ xp: xpAmount, subject: subjectName, reason: "chat_message" }),
-      });
-    } catch {
-    }
+    fetch(`${getBaseUrl()}/api/progress/${encodeURIComponent(profile.deviceId)}/xp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ xp: xpAmount, subject: subjectName, reason: "chat_message" }),
+    }).catch(() => {});
   }, [awardXp, profile?.deviceId]);
 
   const sendMessage = useCallback(async (content: string, imageBase64?: string) => {
@@ -207,7 +274,6 @@ export default function ChatScreen() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
-      let extractedQ: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -219,14 +285,15 @@ export default function ChatScreen() {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             try {
-              const data = JSON.parse(line.slice(6)) as { content?: string; done?: boolean; extractedQuestion?: string };
+              const data = JSON.parse(line.slice(6)) as {
+                content?: string; done?: boolean; extractedQuestion?: string;
+              };
               if (data.content) {
                 accumulated += data.content;
                 setStreamingContent(accumulated);
               }
               if (data.done) {
                 if (data.extractedQuestion) {
-                  extractedQ = data.extractedQuestion;
                   setMessages((prev) => {
                     const updated = [...prev];
                     const firstUserIdx = updated.findIndex((m) => m.role === "user");
@@ -239,24 +306,24 @@ export default function ChatScreen() {
                     return updated;
                   });
                 }
+                const cleanResponse = accumulated.replace(/^TOPIC:.*$/m, "").trim();
                 const assistantMessage: Message = {
                   id: Date.now().toString() + "a",
                   role: "assistant",
-                  content: accumulated,
+                  content: cleanResponse,
                   timestamp: new Date().toISOString(),
                 };
                 setMessages((prev) => [assistantMessage, ...prev]);
                 setStreamingContent("");
                 await awardXpWithBackend(10, subject ?? "General");
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                speakText(accumulated);
+                speakText(cleanResponse);
               }
             } catch {
             }
           }
         }
       }
-      void extractedQ;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
       const errMessage: Message = {
@@ -365,6 +432,9 @@ export default function ChatScreen() {
     </View>
   ) : null;
 
+  const voiceButtonColor = isRecording ? "#ef4444" : isTranscribing ? colors.warning : colors.mutedForeground;
+  const voiceButtonIcon: "mic" | "mic-off" | "hourglass" = isRecording ? "mic-off" : isTranscribing ? "hourglass" : "mic";
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.chatHeader, { paddingTop: topPad + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
@@ -380,7 +450,7 @@ export default function ChatScreen() {
           </View>
         </View>
         {isSpeaking ? (
-          <TouchableOpacity onPress={stopSpeaking} style={styles.speakBtn}>
+          <TouchableOpacity onPress={stopSpeaking} style={styles.headerBtn}>
             <Ionicons name="volume-mute" size={22} color={modeColor} />
           </TouchableOpacity>
         ) : (
@@ -403,7 +473,7 @@ export default function ChatScreen() {
                 {grade} · {board} · {subject}
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                Ask your question or upload a photo of your textbook
+                Type, speak, or photograph your question
               </Text>
               {Platform.OS !== "web" && (
                 <Text style={[styles.emptyHint, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
@@ -432,6 +502,20 @@ export default function ChatScreen() {
             />
 
             <View style={[styles.inputContainer, { paddingBottom: bottomPad + 8, borderTopColor: colors.border, backgroundColor: colors.background }]}>
+              {Platform.OS !== "web" && (
+                <TouchableOpacity
+                  style={[styles.imageBtn, isRecording && styles.recordingActive]}
+                  onPress={isRecording ? stopVoiceRecording : startVoiceRecording}
+                  disabled={isTranscribing || isSending}
+                  testID="voice-btn"
+                >
+                  {isTranscribing ? (
+                    <ActivityIndicator size="small" color={colors.warning} />
+                  ) : (
+                    <Ionicons name={voiceButtonIcon} size={22} color={voiceButtonColor} />
+                  )}
+                </TouchableOpacity>
+              )}
               <TouchableOpacity style={styles.imageBtn} onPress={takePhoto} testID="camera-btn">
                 <Ionicons name="camera" size={22} color={colors.mutedForeground} />
               </TouchableOpacity>
@@ -440,9 +524,9 @@ export default function ChatScreen() {
               </TouchableOpacity>
               <TextInput
                 ref={inputRef}
-                style={[styles.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border, fontFamily: "Inter_400Regular" }]}
-                placeholder="Ask your question..."
-                placeholderTextColor={colors.mutedForeground}
+                style={[styles.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: isRecording ? "#ef4444" : colors.border, fontFamily: "Inter_400Regular" }]}
+                placeholder={isRecording ? "Recording... tap mic to stop" : "Ask your question..."}
+                placeholderTextColor={isRecording ? "#ef4444" : colors.mutedForeground}
                 value={input}
                 onChangeText={setInput}
                 multiline
@@ -480,7 +564,7 @@ const styles = StyleSheet.create({
   subjectLabel: { fontSize: 16 },
   modeTag: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   modeTagText: { fontSize: 12 },
-  speakBtn: { width: 40, alignItems: "center" },
+  headerBtn: { width: 40, alignItems: "center" },
   historyLoading: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyState: {
     position: "absolute", left: 0, right: 0, top: "30%",
@@ -508,6 +592,7 @@ const styles = StyleSheet.create({
     paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 8,
   },
   imageBtn: { padding: 8, paddingBottom: 12 },
+  recordingActive: { backgroundColor: "#ef444420", borderRadius: 20 },
   input: {
     flex: 1, borderWidth: 1, borderRadius: 22, paddingHorizontal: 16,
     paddingVertical: 10, fontSize: 15, maxHeight: 120,
