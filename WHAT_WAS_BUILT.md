@@ -10,10 +10,10 @@
 |---|---|
 | **App Name** | StudyBuddy AI Student Tutor |
 | **Purpose** | AI-powered personal tutor for Indian students |
-| **Target Users** | Class 1–12 students + IIT/Medical/College aspirants across India |
+| **Target Users** | Class 6–12 students + Undergraduate learners across India |
 | **Supported Boards** | CBSE, ICSE, State Board, IB, IGCSE |
 | **Platforms** | iOS, Android, and Web |
-| **Languages** | English, Hindi, Hinglish (auto-detected) |
+| **Languages** | English (primary); AI responds in Hindi/Hinglish if student writes that way |
 
 ---
 
@@ -42,7 +42,7 @@
 A guided, multi-step onboarding flow that personalises the app for each student:
 
 1. **Name** — student enters their name
-2. **Grade** — Class 1–12, IIT/JEE Prep, Medical/NEET, College
+2. **Grade** — Class 6, 7, 8, 9, 10, 11, 12, or Undergraduate
 3. **Board** — CBSE, ICSE, State Board, IB, IGCSE
 4. **Subjects** — multi-select from 11 subjects (Math, Science, Physics, Chemistry, Biology, English, History, Geography, Social Studies, Computer Science, Economics)
 5. **Goal** — optional learning goal (e.g. "Score 90% in boards")
@@ -100,7 +100,7 @@ Students can photograph their textbook or homework:
 - Speak your question naturally
 - Tap again to stop — audio is transcribed by **OpenAI Whisper**
 - Transcribed text appears in the input field ready to send
-- Works in English, Hindi, and Hinglish
+- Currently transcribes in English (Whisper language set to `en`)
 - (Hidden on web browser — native mobile only)
 
 ---
@@ -189,6 +189,7 @@ The app learns what each student struggles with:
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/api/healthz` | Health check — returns `{ status: "ok" }` |
 | `GET` | `/api/profile?deviceId=` | Get a student's profile |
 | `POST` | `/api/profile` | Create or update a student's profile |
 | `GET` | `/api/tutor/sessions?deviceId=` | List all chat sessions for a device |
