@@ -177,7 +177,7 @@ The app learns what each student struggles with:
 
 ### 9. 🔒 Security
 
-- Every API request that reads or modifies a student's session requires a `deviceId` query parameter
+- Every API request that reads or modifies a student's session requires a `deviceId` (passed as a query parameter or in the request body, depending on the endpoint)
 - The backend verifies session ownership at the database level (`WHERE id = ? AND device_id = ?`) — no student can read or delete another student's chats
 - Missing `deviceId` returns HTTP 400 immediately
 - `chat_messages.session_id` is a proper integer **foreign key** referencing `chat_sessions.id` with `ON DELETE CASCADE` — deleting a session automatically cleans up all its messages
@@ -214,6 +214,8 @@ The app learns what each student struggles with:
 | `chat_messages` | Individual messages with role (user/assistant), content, FK to session |
 | `student_progress` | XP, level, streak, total time, subject breakdown, badges, last login date |
 | `weak_topics` | Topics per student+subject that need extra practice, with repeat count |
+
+> The shared DB schema package also contains generic `conversations` and `messages` tables from the workspace template; they are not used by this app.
 
 ---
 
