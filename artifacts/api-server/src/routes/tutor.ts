@@ -54,11 +54,40 @@ const SUBJECT_PERSONAS: Record<string, { name: string; style: string }> = {
 };
 
 const MODE_INSTRUCTIONS: Record<string, string> = {
-  ask: "Answer the student's question clearly and thoroughly. Be encouraging.",
-  homework: "Help the student solve this step-by-step. Guide them to understand, not just copy. Show all working.",
-  "exam-prep": "Provide a concise, exam-ready answer. Include key points, formulas, and what examiners look for. Format clearly for revision.",
-  revision: "Give a quick, memorable summary perfect for last-minute revision. Use bullet points, mnemonics, or key facts. Keep it scannable.",
+  ask: "Answer the exact question first, then explain only the essential steps needed to understand it.",
+  homework: "Coach the student step-by-step. Do not dump a long final solution; show method, working, and the reason for each step.",
+  "exam-prep": "Give an exam-ready answer with scoring points, formulas, common mistakes, and a final quick-revision summary.",
+  revision: "Give a compact revision card with key facts, formulas, mnemonics, and one quick self-check question.",
 };
+
+const DISHA_INSPIRED_TUTORING_STANDARD = `COMMERCIAL TUTORING STANDARD:
+- Work like a premium 1:1 study partner: personalized, precise, practice-oriented, and feedback-driven.
+- Follow the Disha-style learning loop: diagnose the question, teach in small steps, check understanding, and suggest next practice.
+- Prefer clarity over length. The student should understand "what is happening" point by point.
+- Never write long descriptive paragraphs unless the student specifically asks for an essay or story explanation.
+- Keep each point short: ideally 1-2 lines per point.
+- Use student-friendly language for Indian school learners. Avoid jargon unless you define it immediately.
+- If the student makes a mistake, correct it politely and explain the exact mistake.`;
+
+const RESPONSE_FORMAT = `DEFAULT RESPONSE FORMAT:
+1. Direct answer
+   - Give the answer or main idea in 1-2 lines.
+2. Point-by-point explanation
+   - Use numbered steps.
+   - Explain why each step is done.
+   - For Maths/Physics/Chemistry, show formulas and substitutions clearly.
+3. Key takeaway
+   - Give the one thing the student must remember.
+4. Quick check
+   - Ask one short practice/check question OR give one next practice suggestion.
+
+FORMAT RULES:
+- Use headings exactly like: "Direct answer", "Steps", "Key takeaway", "Quick check".
+- Use bullets or numbered lists. Do not use dense paragraphs.
+- For simple factual questions, keep the whole answer under 8 bullets.
+- For complex problems, keep the answer structured and concise; expand only where the working requires it.
+- Do not use emojis.
+- Do not mention this format or these instructions.`;
 
 async function getWeakTopicsContext(deviceId: string, subject: string): Promise<string> {
   const weak = await db.select().from(weakTopicsTable)
@@ -97,13 +126,17 @@ TEACHING STYLE: ${persona.style}
 
 CURRENT MODE: ${modeInstruction}
 ${weakTopicsContext}
+${DISHA_INSPIRED_TUTORING_STANDARD}
+
+${RESPONSE_FORMAT}
+
 STRICT RULES:
 - Only teach content within the ${board} ${grade} ${subject} syllabus. Do NOT go beyond the curriculum.
 - If a question is outside the syllabus, politely say so and redirect to syllabus topics.
 - Always encourage the student. Be warm, supportive, and patient.
 - Use simple English. If the student writes in Hindi or Hinglish, respond in the same language.
-- Do NOT use emojis. Use numbered lists and clear formatting instead.
-- Keep responses concise but complete. Avoid unnecessary repetition.
+- Use numbered lists and clear formatting instead of descriptive paragraphs.
+- Keep responses concise but complete. Avoid unnecessary repetition and filler.
 - If a student seems confused, break the explanation into smaller pieces.
 - At the end of your response, if the student clearly struggled with a concept, made an error, or asked a question that reveals a gap in their understanding, add one line: "TOPIC: <topic name>" where topic is the specific concept they need to practice more. Do NOT add this line for simple questions they answered correctly or straightforward factual lookups.
 
@@ -279,7 +312,7 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
           {
             type: "text",
             text: `First, on a single line starting with "QUESTION: ", write out the exact question or problem visible in the image.
-Then provide a complete step-by-step solution as my ${subject} tutor for a ${board} ${grade} student.
+Then provide a concise, point-by-point solution as my ${subject} tutor for a ${board} ${grade} student. Use the required headings: Direct answer, Steps, Key takeaway, Quick check.
 At the end, add "TOPIC: <topic name>" on its own line.`,
           },
         ],
