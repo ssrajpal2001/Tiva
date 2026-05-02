@@ -66,8 +66,9 @@ TiVa (codebase name: StudyBuddy / AI Student Tutor) — a pnpm monorepo with an 
 
 - The `pnpm run typecheck` command has pre-existing errors in `lib/api-zod` (duplicate exports) and `lib/integrations-openai-ai-react` (missing react types). The API server builds fine via esbuild regardless.
 - The Expo `dev` script in `package.json` uses Replit-specific env vars. For local dev, run Expo directly: `npx expo start --web --port 19006 --non-interactive`.
-- The OpenAI client (`lib/integrations-openai-ai-server/src/client.ts`) throws at import time if `AI_INTEGRATIONS_OPENAI_API_KEY` or `AI_INTEGRATIONS_OPENAI_BASE_URL` are missing — the server will crash on startup without them.
+- The OpenAI client (`lib/integrations-openai-ai-server/src/client.ts`) throws at import time if `AI_INTEGRATIONS_OPENAI_API_KEY` or `AI_INTEGRATIONS_OPENAI_BASE_URL` are missing — the server will crash on startup without them. Use `sk-placeholder` / `https://api.openai.com/v1` to start the server; all non-AI endpoints (health, profile, sessions, progress, weak topics) work fully without a real key.
 - The API server does NOT hot-reload. After code changes, you must kill and restart the process.
+- The Expo frontend uses `EXPO_PUBLIC_DOMAIN` to build API URLs. When empty, it uses relative paths (same-origin). When set to `localhost:8080`, API calls go to the backend over HTTPS — since Chrome blocks mixed content on `http://localhost:19006`, the frontend API calls may fail in the browser. The API can still be tested via `curl` directly.
 
 ### Testing
 
