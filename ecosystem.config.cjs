@@ -12,9 +12,8 @@ module.exports = {
     {
       name: "tiva-api",
       cwd: "./artifacts/api-server",
-      script: "../../node_modules/.bin/node",
+      script: "node",
       args: "--enable-source-maps ./dist/index.mjs",
-      interpreter: "none",
       env: {
         NODE_ENV: process.env.NODE_ENV || "production",
         PORT: process.env.PORT || "8080",
@@ -31,9 +30,8 @@ module.exports = {
     {
       name: "tiva-web",
       cwd: "./artifacts/student-tutor",
-      script: "../../node_modules/.bin/expo",
-      args: "start --web --port 3000",
-      interpreter: "none",
+      script: "pnpm",
+      args: "run start:web",
       env: {
         EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
         NODE_ENV: process.env.NODE_ENV || "production",
