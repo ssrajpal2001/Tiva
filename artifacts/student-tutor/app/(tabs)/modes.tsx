@@ -40,7 +40,7 @@ const MODES = [
 ];
 
 function getBaseUrl(): string {
-  return process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+  return process.env.EXPO_PUBLIC_API_URL ?? "";
 }
 
 const MODE_LABELS: Record<string, string> = {

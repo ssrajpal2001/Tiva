@@ -18,8 +18,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { ProgressProvider } from "@/contexts/ProgressContext";
 
-if (process.env.EXPO_PUBLIC_DOMAIN) {
-  setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
+if (process.env.EXPO_PUBLIC_API_URL) {
+  setBaseUrl(process.env.EXPO_PUBLIC_API_URL);
 }
 
 SplashScreen.preventAutoHideAsync();

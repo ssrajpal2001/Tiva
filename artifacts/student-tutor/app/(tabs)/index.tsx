@@ -39,10 +39,7 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 function getBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
-  }
-  return "";
+  return process.env.EXPO_PUBLIC_API_URL ?? "";
 }
 
 async function createServerSession(

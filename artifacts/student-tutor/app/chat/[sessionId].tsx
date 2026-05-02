@@ -51,7 +51,7 @@ const VOICE_RATE: Record<string, number> = {
 };
 
 function getBaseUrl(): string {
-  return process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+  return process.env.EXPO_PUBLIC_API_URL ?? "";
 }
 
 function TypingIndicator({ color }: { color: string }) {

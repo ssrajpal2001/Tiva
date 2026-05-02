@@ -115,7 +115,7 @@ export default function OnboardingScreen() {
     };
     await setProfile(profileData);
 
-    const baseUrl = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+    const baseUrl = process.env.EXPO_PUBLIC_API_URL ?? "";
     fetch(`${baseUrl}/api/profile`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

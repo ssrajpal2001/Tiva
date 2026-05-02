@@ -47,7 +47,7 @@ interface WeakTopic {
 }
 
 function getBaseUrl(): string {
-  return process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+  return process.env.EXPO_PUBLIC_API_URL ?? "";
 }
 
 function formatTime(minutes: number): string {
