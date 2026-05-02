@@ -14,13 +14,16 @@ echo "  TiVa — EC2 Setup & Start"
 echo "=============================="
 echo ""
 
-# --- 1. Check .env exists ---
+# --- 1. Check .env exists and load it ---
 if [ ! -f ".env" ]; then
   echo "ERROR: .env file not found."
   echo "       Run: cp .env.example .env"
   echo "       Then fill in your API keys and database URL."
   exit 1
 fi
+
+# Load env vars for use in this script (migrations, etc.)
+set -a; source .env; set +a
 
 # --- 2. Install pnpm if missing ---
 if ! command -v pnpm &>/dev/null; then
@@ -67,9 +70,6 @@ echo "=============================="
 echo "  TiVa is running!"
 echo "=============================="
 echo ""
-
-# Load .env to show the elastic IP
-set -a; source .env; set +a
 
 API_PORT="${PORT:-8080}"
 echo "  API:      http://$(curl -s ifconfig.me 2>/dev/null || echo 'YOUR_ELASTIC_IP'):${API_PORT}/api/health"
