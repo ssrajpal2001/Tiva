@@ -21,6 +21,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "book", selected: "book.fill" }} />
         <Label>Modes</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="study">
+        <Icon sf={{ default: "target", selected: "target" }} />
+        <Label>Study</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="progress">
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
         <Label>Progress</Label>
@@ -87,6 +91,18 @@ function ClassicTabLayout() {
               <SymbolView name="book.fill" tintColor={color} size={24} />
             ) : (
               <Ionicons name="book" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="study"
+        options={{
+          title: "Study",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="target" tintColor={color} size={24} />
+            ) : (
+              <Ionicons name="sparkles" size={22} color={color} />
             ),
         }}
       />
