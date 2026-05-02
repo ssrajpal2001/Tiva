@@ -1,10 +1,42 @@
 # AGENTS.md
 
+## TiVa — Product Context
+
+**TiVa** (pronounced *tee-vaa*) — tagline: "No more TV, only TiVa."
+
+TiVa is NOT a generic AI chatbot or tutoring marketplace. It is an **AI-driven learning discipline and mastery system** for K-12 and undergraduate students in India. The codebase currently uses the working name "StudyBuddy" / "AI Student Tutor" in code, but the product name is **TiVa**.
+
+### Core philosophy
+
+- **Discipline & mastery over content overload.** Focus on spaced repetition, weak-topic tracking, and outcome-driven learning — not just delivering more videos.
+- **Humanized AI mentor.** The AI simulates a human mentor with VOIP (WhatsApp-style) calls, proactive check-ins, and a dynamic personality (Friendly / Strict / Motivational) chosen by the student.
+- **Daily Mastery Coach (DMC) framework** governs AI behavior: remember mistakes, re-ask via spaced repetition, one-click diagnostics for weak areas, multi-modal input (images, PDFs, docs, audio).
+
+### Key feature areas (target state)
+
+| Area | Requirements |
+|---|---|
+| **Communication** | Real-time VOIP calls, proactive "agent" calls to students, greeting simulation |
+| **Learning Tools** | Subject/mode toggle in chat, weekly/monthly/yearly tests, live classroom sync (process teacher audio/PDFs/YouTube) |
+| **Teacher Tools** | Upload lectures (voice/text/PDF), broadcast messages/live links, royalty tracking |
+| **School Integration** | School login to update syllabus/books, school-level subscriptions for specific students |
+| **Admin Panel** | Service toggling (free vs subscription), LLM Connect for AI integrations, teacher blacklisting, performance reports to principals/HODs, profile management |
+| **Economy & Gamification** | Performance-linked discounts (test score = % discount on next month), TiVa coins, bonus coins for tests, subscription + handling fee split |
+| **UI/UX** | Bold headings (no markdown stars in rendered UI), humanized polished format, animation-rich TiVa logo |
+
+### Critical constraints
+
+- Do NOT position as a generic "content platform" or "tutoring marketplace."
+- Do NOT create "content overload" — focus on discipline and mastery.
+- Do NOT rely on simple rating systems as standalone value; focus on outcome-driven positioning.
+
+---
+
 ## Cursor Cloud specific instructions
 
 ### Project overview
 
-StudyBuddy AI Student Tutor — a pnpm monorepo with an Express 5 API server, an Expo/React Native frontend, and shared library packages. See `replit.md` for full stack details and key commands.
+TiVa (codebase name: StudyBuddy / AI Student Tutor) — a pnpm monorepo with an Express 5 API server, an Expo/React Native frontend, and shared library packages. See `replit.md` for full stack details and key commands.
 
 ### Services
 
