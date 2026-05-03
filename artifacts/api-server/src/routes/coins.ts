@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { coinLedgerTable, studentProgressTable } from "@workspace/db/schema";
+import { coinLedgerTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 const router = Router();
@@ -22,6 +22,11 @@ async function getBalance(deviceId: string): Promise<number> {
 
   return entries[0]?.balanceAfter ?? 0;
 }
+
+// Static routes MUST come before /:deviceId to avoid being shadowed
+router.get("/coins/store", (_req, res) => {
+  res.json(STORE_ITEMS);
+});
 
 router.get("/coins/:deviceId", async (req, res) => {
   const { deviceId } = req.params;
@@ -92,10 +97,6 @@ router.post("/coins/spend", async (req, res) => {
   });
 
   res.json({ success: true, balance: newBalance, item });
-});
-
-router.get("/coins/store", (_req, res) => {
-  res.json(STORE_ITEMS);
 });
 
 export default router;
