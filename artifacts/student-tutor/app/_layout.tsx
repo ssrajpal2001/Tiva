@@ -17,6 +17,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { ProgressProvider } from "@/contexts/ProgressContext";
+import { CoinsProvider } from "@/contexts/CoinsContext";
 
 if (process.env.EXPO_PUBLIC_API_URL) {
   setBaseUrl(process.env.EXPO_PUBLIC_API_URL);
@@ -32,6 +33,10 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="chat/[sessionId]" options={{ headerShown: false }} />
+      <Stack.Screen name="call/[sessionId]" options={{ headerShown: false, presentation: "fullScreenModal" }} />
+      <Stack.Screen name="test/[testId]" options={{ headerShown: false }} />
+      <Stack.Screen name="test/results/[testId]" options={{ headerShown: false }} />
+      <Stack.Screen name="store" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -60,7 +65,9 @@ export default function RootLayout() {
             <KeyboardProvider>
               <ProfileProvider>
                 <ProgressProvider>
-                  <RootLayoutNav />
+                  <CoinsProvider>
+                    <RootLayoutNav />
+                  </CoinsProvider>
                 </ProgressProvider>
               </ProfileProvider>
             </KeyboardProvider>

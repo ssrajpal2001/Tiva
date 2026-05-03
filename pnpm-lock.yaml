@@ -163,6 +163,9 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -190,6 +193,9 @@ importers:
       pino-http:
         specifier: ^10
         version: 10.5.0
+      ws:
+        specifier: ^8.20.0
+        version: 8.20.0
     devDependencies:
       '@types/cookie-parser':
         specifier: ^1.4.10
@@ -584,7 +590,11 @@ importers:
         specifier: ^0.31.9
         version: 0.31.9
 
-  lib/integrations-openai-ai-react: {}
+  lib/integrations-openai-ai-react:
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.1.17
 
   lib/integrations-openai-ai-server:
     dependencies:
@@ -2458,6 +2468,9 @@ packages:
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
 
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+
   '@types/yargs-parser@21.0.3':
     resolution: {integrity: sha512-I4q9QU9MQv4oEOz4tAHJtNz1cwuLxn2F3xcc2iV5WdqLPpUnj30aUuxt1mAxYTG+oe8CZMV/+6rU4S4gRDzqtQ==}
 
@@ -2482,6 +2495,7 @@ packages:
   '@xmldom/xmldom@0.8.12':
     resolution: {integrity: sha512-9k/gHF6n/pAi/9tqr3m3aqkuiNosYTurLLUtc7xQ9sxB/wm7WPygCv8GYa6mS0fLJEHhqMC1ATYhz++U/lRHqg==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
@@ -5489,11 +5503,12 @@ packages:
 
   uuid@3.4.0:
     resolution: {integrity: sha512-HjSDRw6gZE5JMggctHBcjVak08+KEVhSIiDzFnT9S9aegmp85S/bReBVTb4QTFaRNptJ9kuYaNhnbNEOkbKb/A==}
-    deprecated: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@7.0.3:
     resolution: {integrity: sha512-DPSke0pXhTZgoF/d+WSt2QaKMCFSfx7QegxEWT+JOuHF5aWrKEn0G+ztjuJg/gG8/ItK+rbPCD/yNv8yyih6Cg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   validate-npm-package-name@5.0.1:
@@ -8279,6 +8294,10 @@ snapshots:
   '@types/stack-utils@2.0.3': {}
 
   '@types/unist@3.0.3': {}
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 25.3.5
 
   '@types/yargs-parser@21.0.3': {}
 

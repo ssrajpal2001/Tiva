@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useCoins } from "@/contexts/CoinsContext";
 
 interface Session {
   id: number;
@@ -79,6 +80,7 @@ export default function ChatTab() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile, loading } = useProfile();
+  const { balance, refreshBalance } = useCoins();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [startingSession, setStartingSession] = useState<string | null>(null);
@@ -90,8 +92,9 @@ export default function ChatTab() {
         setSessions(result);
         setSessionsLoading(false);
       });
+      refreshBalance(profile.deviceId);
     }
-  }, [profile?.deviceId]);
+  }, [profile?.deviceId, refreshBalance]);
 
   const startNewSession = async (subject: string, mode: string) => {
     if (!profile) {
@@ -145,9 +148,9 @@ export default function ChatTab() {
       <View style={[styles.onboardContainer, { backgroundColor: colors.background, paddingTop: topPad + 24 }]}>
         <View style={[styles.onboardCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Ionicons name="school" size={48} color={colors.primary} />
-          <Text style={[styles.onboardTitle, { color: colors.foreground }]}>Welcome to StudyBuddy</Text>
+          <Text style={[styles.onboardTitle, { color: colors.foreground }]}>Welcome to TiVa</Text>
           <Text style={[styles.onboardSubtitle, { color: colors.mutedForeground }]}>
-            Your personal AI tutor for every subject
+            No more TV, only TiVa.
           </Text>
           <TouchableOpacity
             style={[styles.onboardBtn, { backgroundColor: colors.primary }]}
@@ -165,12 +168,21 @@ export default function ChatTab() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
-          Hey {profile.name.split(" ")[0]}!
-        </Text>
-        <Text style={[styles.headerSubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-          {profile.grade} | {profile.board}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.headerTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+            Hey {profile.name.split(" ")[0]}!
+          </Text>
+          <Text style={[styles.headerSubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+            {profile.grade} | {profile.board}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.coinsBadge, { backgroundColor: "#f59e0b18", borderColor: "#f59e0b" }]}
+          onPress={() => router.push("/store")}
+        >
+          <Ionicons name="logo-bitcoin" size={16} color="#f59e0b" />
+          <Text style={[styles.coinsText, { color: "#f59e0b" }]}>{balance}</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -289,9 +301,15 @@ const styles = StyleSheet.create({
   onboardBtnText: { fontSize: 16, fontWeight: "600" },
   header: {
     paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row", alignItems: "center",
   },
   headerTitle: { fontSize: 26 },
   headerSubtitle: { fontSize: 14, marginTop: 2 },
+  coinsBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1,
+  },
+  coinsText: { fontSize: 14, fontWeight: "700" },
   sectionTitle: { fontSize: 16, marginTop: 20, marginBottom: 12 },
   subjectsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   subjectCard: {

@@ -480,13 +480,35 @@ export default function ChatScreen() {
             <Text style={[styles.modeTagText, { color: modeColor, fontFamily: "Inter_500Medium" }]}>{modeLabel}</Text>
           </View>
         </View>
-        {isSpeaking ? (
-          <TouchableOpacity onPress={stopSpeaking} style={styles.headerBtn}>
-            <Ionicons name="volume-mute" size={22} color={modeColor} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {isSpeaking && (
+            <TouchableOpacity onPress={stopSpeaking} style={styles.headerBtn}>
+              <Ionicons name="volume-mute" size={22} color={modeColor} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.headerBtn, { backgroundColor: "#25d36620" }]}
+            onPress={async () => {
+              const apiUrl = getBaseUrl();
+              const deviceId = profile?.deviceId ?? "";
+              try {
+                const resp = await fetch(`${apiUrl}/api/call/start`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ deviceId }),
+                });
+                const data = await resp.json();
+                if (data.sessionId) {
+                  router.push(`/call/${data.sessionId}`);
+                }
+              } catch {
+                Alert.alert("Error", "Could not start call. Please try again.");
+              }
+            }}
+          >
+            <Ionicons name="call" size={20} color="#25d366" />
           </TouchableOpacity>
-        ) : (
-          <View style={{ width: 40 }} />
-        )}
+        </View>
       </View>
 
       {historyLoading ? (
