@@ -36,6 +36,9 @@ const colors = {
     subjectHistory: "#f77f00",
     subjectGeography: "#2ec4b6",
     subjectCS: "#06d6a0",
+    brand: "#00c853",
+    callGreen: "#25d366",
+    callRed: "#ef4444",
   },
   dark: {
     text: "#f8f7ff",
@@ -74,6 +77,9 @@ const colors = {
     subjectHistory: "#ffd166",
     subjectGeography: "#2ec4b6",
     subjectCS: "#06d6a0",
+    brand: "#00c853",
+    callGreen: "#25d366",
+    callRed: "#ef4444",
   },
   radius: 16,
 };

@@ -25,6 +25,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
         <Label>Progress</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="tests">
+        <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
+        <Label>Tests</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
         <Label>Profile</Label>
@@ -99,6 +103,18 @@ function ClassicTabLayout() {
               <SymbolView name="chart.bar.fill" tintColor={color} size={24} />
             ) : (
               <Ionicons name="bar-chart" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="tests"
+        options={{
+          title: "Tests",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="doc.text.fill" tintColor={color} size={24} />
+            ) : (
+              <Ionicons name="document-text-outline" size={22} color={color} />
             ),
         }}
       />
