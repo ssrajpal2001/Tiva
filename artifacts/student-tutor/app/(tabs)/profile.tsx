@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useProgress } from "@/contexts/ProgressContext";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const VOICE_OPTIONS = [
   { id: "friendly", label: "Friendly Teacher", icon: "happy" as const, description: "Warm, encouraging, approachable" },
@@ -26,6 +27,7 @@ export default function ProfileTab() {
   const insets = useSafeAreaInsets();
   const { profile, updateVoicePersonality } = useProfile();
   const { progress } = useProgress();
+  const { themeMode, setThemeMode } = useTheme();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -142,6 +144,65 @@ export default function ProfileTab() {
           })}
         </View>
 
+        <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.infoCardTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+            Display
+          </Text>
+          <Text style={[styles.voiceSubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+            Choose your preferred theme
+          </Text>
+          {(["light", "dark", "system"] as const).map((mode) => {
+            const isSelected = themeMode === mode;
+            const iconMap = { light: "sunny" as const, dark: "moon" as const, system: "contrast" as const };
+            const labelMap = { light: "Light", dark: "Dark", system: "Auto (System)" };
+            const descMap = { light: "Always light mode", dark: "Always dark mode", system: "Follow system setting" };
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[
+                  styles.voiceOption,
+                  {
+                    backgroundColor: isSelected ? colors.primary + "15" : colors.background,
+                    borderColor: isSelected ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setThemeMode(mode)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name={iconMap[mode]} size={22} color={isSelected ? colors.primary : colors.mutedForeground} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.voiceLabel, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>{labelMap[mode]}</Text>
+                  <Text style={[styles.voiceDesc, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>{descMap[mode]}</Text>
+                </View>
+                {isSelected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.infoCardTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+            More Features
+          </Text>
+          {[
+            { icon: "book" as const, label: "Textbook Library", route: "/textbooks" },
+            { icon: "document-text" as const, label: "Previous Year Papers", route: "/prev-year-papers" },
+            { icon: "school" as const, label: "Teacher Portal", route: "/teacher-portal" },
+            { icon: "gift" as const, label: "Refer & Earn", route: "/referral" },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.route}
+              style={[styles.navItem, { borderColor: colors.border }]}
+              onPress={() => router.push(item.route as any)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name={item.icon} size={20} color={colors.primary} />
+              <Text style={[styles.navItemText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>{item.label}</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: colors.primary, fontFamily: "Inter_700Bold" }]}>{progress.totalXp}</Text>
@@ -201,4 +262,6 @@ const styles = StyleSheet.create({
   noProfileText: { fontSize: 15, textAlign: "center", marginVertical: 16 },
   editBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 50 },
   editBtnText: { fontSize: 15 },
+  navItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
+  navItemText: { flex: 1, fontSize: 15 },
 });
