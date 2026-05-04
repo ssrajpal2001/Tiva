@@ -3,6 +3,7 @@ import { WebSocketServer } from "ws";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { handleCallWebSocket } from "./routes/call";
+import { startCronJobs } from "./services/cronService";
 
 const rawPort = process.env["PORT"];
 
@@ -41,4 +42,5 @@ server.listen(port, (err?: Error) => {
   }
 
   logger.info({ port }, "Server listening");
+  startCronJobs();
 });

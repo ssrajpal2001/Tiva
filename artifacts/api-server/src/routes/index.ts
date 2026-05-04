@@ -8,6 +8,11 @@ import transcribeRouter from "./transcribe";
 import callRouter from "./call";
 import testsRouter from "./tests";
 import coinsRouter from "./coins";
+import teacherRouter from "./teacher";
+import schoolRouter from "./school";
+import adminRouter from "./admin";
+import referralRouter from "./referral";
+import adminPanelRouter from "./adminPanel";
 
 const router: IRouter = Router();
 
@@ -20,5 +25,10 @@ router.use(transcribeRouter);
 router.use(callRouter);
 router.use(testsRouter);
 router.use(coinsRouter);
+router.use(teacherRouter);
+router.use(schoolRouter);
+router.use(adminRouter);
+router.use(referralRouter);
+router.use(adminPanelRouter);
 
 export default router;

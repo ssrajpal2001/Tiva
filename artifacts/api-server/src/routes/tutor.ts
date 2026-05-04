@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { chatSessionsTable, chatMessagesTable, weakTopicsTable } from "@workspace/db/schema";
+import { chatSessionsTable, chatMessagesTable, weakTopicsTable, studentProfilesTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
@@ -85,11 +85,20 @@ async function recordWeakTopic(deviceId: string, subject: string, topic: string)
   }
 }
 
-async function buildSystemPrompt(subject: string, grade: string, board: string, mode: string, deviceId: string): Promise<string> {
+async function buildSystemPrompt(subject: string, grade: string, board: string, mode: string, deviceId: string, language?: string): Promise<string> {
   const subjectKey = subject.toLowerCase();
   const persona = SUBJECT_PERSONAS[subjectKey] ?? { name: `${subject} Tutor`, style: `You are an expert ${subject} teacher.` };
   const modeInstruction = MODE_INSTRUCTIONS[mode] ?? MODE_INSTRUCTIONS["ask"];
   const weakTopicsContext = await getWeakTopicsContext(deviceId, subject);
+
+  let languageInstruction: string;
+  if (language === "Hindi") {
+    languageInstruction = "Always respond in Hindi (Devanagari script). Use simple, clear Hindi.";
+  } else if (language === "Hinglish") {
+    languageInstruction = "Always respond in Hinglish (mix of Hindi and English). Use casual, friendly Hinglish.";
+  } else {
+    languageInstruction = "Use simple English.";
+  }
 
   return `You are ${persona.name} for a ${board} ${grade} student in India.
 
@@ -101,7 +110,7 @@ STRICT RULES:
 - Only teach content within the ${board} ${grade} ${subject} syllabus. Do NOT go beyond the curriculum.
 - If a question is outside the syllabus, politely say so and redirect to syllabus topics.
 - Always encourage the student. Be warm, supportive, and patient.
-- Use simple English. If the student writes in Hindi or Hinglish, respond in the same language.
+- ${languageInstruction}
 - Do NOT use emojis. Use numbered lists and clear formatting instead.
 - Keep responses concise but complete. Avoid unnecessary repetition.
 - If a student seems confused, break the explanation into smaller pieces.
@@ -203,7 +212,8 @@ router.post("/tutor/sessions/:id/messages", async (req, res) => {
     .where(eq(chatMessagesTable.sessionId, id))
     .orderBy(chatMessagesTable.createdAt);
 
-  const systemPrompt = await buildSystemPrompt(subject, grade, board, mode, deviceId);
+  const [profile] = await db.select().from(studentProfilesTable).where(eq(studentProfilesTable.deviceId, deviceId));
+  const systemPrompt = await buildSystemPrompt(subject, grade, board, mode, deviceId, profile?.preferredLanguage ?? undefined);
 
   const chatMessages = [
     { role: "system" as const, content: systemPrompt },
@@ -258,7 +268,8 @@ router.post("/tutor/sessions/:id/image-messages", async (req, res) => {
     return;
   }
 
-  const systemPrompt = await buildSystemPrompt(subject, grade, board, mode, deviceId);
+  const [profile] = await db.select().from(studentProfilesTable).where(eq(studentProfilesTable.deviceId, deviceId));
+  const systemPrompt = await buildSystemPrompt(subject, grade, board, mode, deviceId, profile?.preferredLanguage ?? undefined);
   const imageUrl = `data:image/jpeg;base64,${imageBase64}`;
 
   res.setHeader("Content-Type", "text/event-stream");
