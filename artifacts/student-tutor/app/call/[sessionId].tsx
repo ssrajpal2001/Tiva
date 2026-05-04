@@ -8,6 +8,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
+
+// Extend window for webkit AudioContext
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
 import { useProfile } from "@/contexts/ProfileContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -69,11 +76,20 @@ export default function CallScreen() {
   const [isAISpeaking, setIsAISpeaking] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  // Native recording ref
   const recordingRef = useRef<Audio.Recording | null>(null);
+  // Web recording ref
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const webChunksRef = useRef<Blob[]>([]);
+  // Playback
   const soundRef = useRef<Audio.Sound | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptScrollRef = useRef<ScrollView>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable refs for mutable state — avoids re-creating callbacks and re-connecting WS
+  const isMutedRef = useRef(false);
+  const isAISpeakingRef = useRef(false);
 
   const firstName = profile?.name?.split(" ")[0] ?? "there";
 
@@ -83,16 +99,39 @@ export default function CallScreen() {
     return `${m}:${s}`;
   };
 
+  // Keep refs in sync with state
+  const setIsMutedSync = (val: boolean) => {
+    isMutedRef.current = val;
+    setIsMuted(val);
+  };
+  const setIsAISpeakingSync = (val: boolean) => {
+    isAISpeakingRef.current = val;
+    setIsAISpeaking(val);
+  };
+
+  // Stable stopRecording — no deps that change
   const stopRecording = useCallback(async () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    if (Platform.OS === "web") {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        // ondataavailable + onstop will send the buffer
+      }
+      return;
+    }
+
     if (!recordingRef.current) return;
     try {
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
-
       if (uri && wsRef.current?.readyState === WebSocket.OPEN) {
-        const response = await fetch(uri);
-        const arrayBuffer = await response.arrayBuffer();
+        const res = await fetch(uri);
+        const arrayBuffer = await res.arrayBuffer();
         wsRef.current.send(arrayBuffer);
       }
     } catch {
@@ -100,13 +139,46 @@ export default function CallScreen() {
     }
   }, []);
 
+  // Stable startRecording — reads mutable state from refs, not closure variables
   const startRecording = useCallback(async () => {
-    if (isMuted || isAISpeaking) return;
+    if (isMutedRef.current || isAISpeakingRef.current) return;
 
-    try {
-      if (recordingRef.current) {
-        await stopRecording();
+    if (Platform.OS === "web") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+        const mr = new MediaRecorder(stream, { mimeType });
+        mediaRecorderRef.current = mr;
+        webChunksRef.current = [];
+
+        mr.ondataavailable = (e) => {
+          if (e.data.size > 0) webChunksRef.current.push(e.data);
+        };
+        mr.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          if (webChunksRef.current.length === 0) return;
+          const blob = new Blob(webChunksRef.current, { type: mimeType });
+          const ab = await blob.arrayBuffer();
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(ab);
+          }
+        };
+
+        mr.start(250); // collect chunks every 250ms
+        // Auto-stop after 8s
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => stopRecording(), 8000);
+      } catch {
+        // mic permission denied or not available
       }
+      return;
+    }
+
+    // Native path
+    try {
+      if (recordingRef.current) await stopRecording();
 
       const { granted } = await Audio.requestPermissionsAsync();
       if (!granted) return;
@@ -121,97 +193,98 @@ export default function CallScreen() {
       );
       recordingRef.current = recording;
 
-      // Auto-stop after 8 seconds of continuous speech
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        stopRecording();
-      }, 8000);
+      silenceTimerRef.current = setTimeout(() => stopRecording(), 8000);
     } catch {
       // ignore mic errors
     }
-  }, [isMuted, isAISpeaking, stopRecording]);
+  }, [stopRecording]);
 
+  // Stable playAudioBuffer — reads isMuted from ref
   const playAudioBuffer = useCallback(async (arrayBuffer: ArrayBuffer) => {
-    try {
-      setIsAISpeaking(true);
+    setIsAISpeakingSync(true);
 
+    if (Platform.OS === "web") {
+      try {
+        const Ctx = window.AudioContext ?? window.webkitAudioContext;
+        if (!Ctx) { setIsAISpeakingSync(false); return; }
+        if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+          audioCtxRef.current = new Ctx();
+        }
+        const ctx = audioCtxRef.current;
+        const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        const source = ctx.createBufferSource();
+        source.buffer = decoded;
+        source.connect(ctx.destination);
+        source.onended = () => {
+          setIsAISpeakingSync(false);
+          if (!isMutedRef.current) startRecording();
+        };
+        source.start();
+      } catch {
+        setIsAISpeakingSync(false);
+      }
+      return;
+    }
+
+    // Native path
+    try {
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
       });
-
-      // Write buffer to a temp URI via base64
       const base64 = btoa(
         new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ""),
       );
-      const dataUri = `data:audio/mp3;base64,${base64}`;
-
-      const { sound } = await Audio.Sound.createAsync({ uri: dataUri });
+      const { sound } = await Audio.Sound.createAsync({ uri: `data:audio/mp3;base64,${base64}` });
       soundRef.current = sound;
-
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          setIsAISpeaking(false);
-          // Start listening after AI finishes speaking
-          if (!isMuted) {
-            startRecording();
-          }
+          setIsAISpeakingSync(false);
+          if (!isMutedRef.current) startRecording();
         }
       });
-
       await sound.playAsync();
     } catch {
-      setIsAISpeaking(false);
+      setIsAISpeakingSync(false);
     }
-  }, [isMuted, startRecording]);
+  }, [startRecording]);
 
-  const connectWebSocket = useCallback(() => {
-    const wsUrl = `${getWsUrl()}/api/call/ws/${sessionId}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setCallState("connected");
-      timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
-    };
-
-    ws.onmessage = async (event) => {
-      if (typeof event.data === "string") {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === "transcript") {
-            setTranscript((prev) => [...prev, { role: msg.role, text: msg.text }]);
-            setTimeout(() => transcriptScrollRef.current?.scrollToEnd({ animated: true }), 100);
-          }
-        } catch {
-          // ignore
-        }
-      } else if (event.data instanceof ArrayBuffer) {
-        await playAudioBuffer(event.data);
-      } else if (event.data instanceof Blob) {
-        const ab = await event.data.arrayBuffer();
-        await playAudioBuffer(ab);
-      }
-    };
-
-    ws.onclose = () => {
-      setCallState("ended");
-    };
-
-    ws.onerror = () => {
-      setCallState("ended");
-    };
-  }, [sessionId, playAudioBuffer]);
-
+  // WebSocket connection — runs ONCE on mount; stable because playAudioBuffer is stable
   useEffect(() => {
-    // Connect WebSocket after short delay to let the calling animation show
     const timeout = setTimeout(() => {
-      connectWebSocket();
+      const wsUrl = `${getWsUrl()}/api/call/ws/${sessionId}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setCallState("connected");
+        timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
+      };
+
+      ws.onmessage = async (event) => {
+        if (typeof event.data === "string") {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "transcript") {
+              setTranscript((prev) => [...prev, { role: msg.role, text: msg.text }]);
+              setTimeout(() => transcriptScrollRef.current?.scrollToEnd({ animated: true }), 100);
+            }
+          } catch { /* ignore */ }
+        } else if (event.data instanceof ArrayBuffer) {
+          await playAudioBuffer(event.data);
+        } else if (event.data instanceof Blob) {
+          const ab = await event.data.arrayBuffer();
+          await playAudioBuffer(ab);
+        }
+      };
+
+      ws.onclose = () => setCallState("ended");
+      ws.onerror = () => setCallState("ended");
     }, 1500);
 
     return () => {
@@ -221,18 +294,10 @@ export default function CallScreen() {
       wsRef.current?.close();
       recordingRef.current?.stopAndUnloadAsync().catch(() => {});
       soundRef.current?.unloadAsync().catch(() => {});
+      audioCtxRef.current?.close().catch(() => {});
     };
-  }, [connectWebSocket]);
-
-  // Start listening after AI finishes greeting
-  useEffect(() => {
-    if (callState === "connected" && !isAISpeaking && transcript.length > 0) {
-      const last = transcript[transcript.length - 1];
-      if (last?.role === "assistant") {
-        startRecording();
-      }
-    }
-  }, [isAISpeaking, callState, transcript, startRecording]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — connect once on mount
 
   const handleEndCall = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -250,11 +315,11 @@ export default function CallScreen() {
   }, [sessionId, router, stopRecording]);
 
   const toggleMute = useCallback(() => {
-    setIsMuted((m) => !m);
-    if (!isMuted && recordingRef.current) {
-      stopRecording();
-    }
-  }, [isMuted, stopRecording]);
+    const next = !isMutedRef.current;
+    setIsMutedSync(next);
+    if (next && recordingRef.current) stopRecording();
+    if (next && mediaRecorderRef.current?.state === "recording") stopRecording();
+  }, [stopRecording]);
 
   const CALL_GREEN = "#25d366";
   const CALL_RED = "#ef4444";
